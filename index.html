@@ -38,6 +38,10 @@
       <button onclick="saveConfig()" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
         Save & Connect
       </button>
+      <button id="copyLinkBtn" onclick="copyShareableLink()" class="w-full mt-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+        Copy shareable link
+      </button>
+      <p class="text-xs text-gray-400 mt-2 text-center">Share this link so other devices connect automatically</p>
     </div>
   </div>
 
@@ -88,24 +92,45 @@
   <script>
     // ============ SUPABASE SETUP ============
     let supabaseClient = null;
-    
+
     function getConfig() {
-      const url = localStorage.getItem('supabase_url');
-      const key = localStorage.getItem('supabase_key');
-      return { url, key };
+      // Check URL hash first so a shared link auto-configures new devices
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+      const hashUrl = hash.get('url');
+      const hashKey = hash.get('key');
+      if (hashUrl && hashKey) {
+        localStorage.setItem('supabase_url', hashUrl);
+        localStorage.setItem('supabase_key', hashKey);
+        // Clean up the hash so credentials don't linger in browser history
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      return {
+        url: hashUrl || localStorage.getItem('supabase_url'),
+        key: hashKey || localStorage.getItem('supabase_key')
+      };
     }
-    
+
     function saveConfig() {
       const url = document.getElementById('configUrl').value.trim();
       const key = document.getElementById('configKey').value.trim();
-      
       if (url && key) {
         localStorage.setItem('supabase_url', url);
         localStorage.setItem('supabase_key', key);
         location.reload();
       }
     }
-    
+
+    function copyShareableLink() {
+      const { url, key } = getConfig();
+      if (!url || !key) return;
+      const link = `${window.location.origin}${window.location.pathname}#url=${encodeURIComponent(url)}&key=${encodeURIComponent(key)}`;
+      navigator.clipboard.writeText(link).then(() => {
+        const btn = document.getElementById('copyLinkBtn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy shareable link'; }, 2000);
+      });
+    }
+
     function showConfig() {
       const { url, key } = getConfig();
       document.getElementById('configUrl').value = url || '';
@@ -259,7 +284,7 @@
 
     async function markTrashDone() {
       try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = todayLocalDateKey();
         const currentPerson = state.trashQueue[0]?.person_id;
         
         if (!currentPerson) return;
@@ -289,30 +314,34 @@
       }
     }
 
+    function todayLocalDateKey() {
+      return toLocalDateKey(new Date());
+    }
+
     function isTrashCompletedToday() {
       if (!state.trashCompletion) return false;
-      const today = new Date().toISOString().split('T')[0];
-      return state.trashCompletion.completed_date === today;
+      return state.trashCompletion.completed_date === todayLocalDateKey();
     }
 
     async function unmarkTrashDone() {
       try {
-        // Move the last person (who just completed) back to the front
-        if (state.trashQueue.length > 1) {
-          const last = state.trashQueue.pop();
-          state.trashQueue.unshift(last);
-          
-          // Update positions in database
-          for (let i = 0; i < state.trashQueue.length; i++) {
-            await supabaseClient.from('trash_queue').update({ position: i }).eq('id', state.trashQueue[i].id);
+        const completedById = state.trashCompletion?.completed_by;
+        if (completedById && state.trashQueue.length > 1) {
+          // Find the person who completed trash and move them back to position 0
+          const queue = [...state.trashQueue];
+          const idx = queue.findIndex(q => q.person_id === completedById);
+          if (idx > 0) {
+            const [person] = queue.splice(idx, 1);
+            queue.unshift(person);
+            for (let i = 0; i < queue.length; i++) {
+              await supabaseClient.from('trash_queue').update({ position: i }).eq('id', queue[i].id);
+            }
           }
         }
-        
-        // Delete today's completion
-        const today = new Date().toISOString().split('T')[0];
-        const { error } = await supabaseClient.from('trash_completions').delete().eq('completed_date', today);
+
+        const { error } = await supabaseClient.from('trash_completions').delete().eq('completed_date', todayLocalDateKey());
         if (error) throw error;
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error unmarking trash:', error);
@@ -321,12 +350,8 @@
     }
 
     async function rotateTrashQueueIfNeeded() {
-      // Clear yesterday's completion status on new day
-      if (state.trashCompletion) {
-        const today = new Date().toISOString().split('T')[0];
-        if (state.trashCompletion.completed_date < today) {
-          state.trashCompletion = null;
-        }
+      if (state.trashCompletion && state.trashCompletion.completed_date < todayLocalDateKey()) {
+        state.trashCompletion = null;
       }
     }
 
@@ -384,13 +409,25 @@
       try {
         const startDate = document.getElementById('cleaningStartDate').value;
         const startGroupId = parseInt(document.getElementById('cleaningStartGroup').value) || null;
-        
-        const { error } = await supabaseClient.from('cleaning_settings').update({ 
-          start_date: startDate || null, 
-          start_group_id: startGroupId 
+
+        const settingsChanged =
+          startDate !== state.cleaningSettings.start_date ||
+          startGroupId !== state.cleaningSettings.start_group_id;
+
+        const { error } = await supabaseClient.from('cleaning_settings').update({
+          start_date: startDate || null,
+          start_group_id: startGroupId
         }).eq('id', 1);
         if (error) throw error;
-        
+
+        // Old postponements reference chain-positions tied to the old start date/group.
+        // Clearing them prevents them from silently corrupting the new schedule.
+        if (settingsChanged && state.cleaningPostponements.length > 0) {
+          if (confirm('Changing the schedule will clear all existing postponements. Continue?')) {
+            await supabaseClient.from('cleaning_postponements').delete().neq('id', 0);
+          }
+        }
+
         await loadAllData();
       } catch (error) {
         console.error('Error saving settings:', error);
@@ -513,54 +550,84 @@
       return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     }
 
-    function getGroupForDate(date) {
+    // Builds a map of the full cleaning schedule, cascading postponements so that
+    // each slot's next date is always exactly 4 days after the actual (possibly postponed) date.
+    function buildCleaningScheduleMap() {
       const { start_date, start_group_id } = state.cleaningSettings;
-      if (!start_date || !start_group_id || state.cleaningGroups.length === 0) return null;
-      
-      const startDate = new Date(start_date + 'T00:00:00');
-      const checkDate = new Date(date);
-      checkDate.setHours(0, 0, 0, 0);
-      
-      const daysDiff = Math.floor((checkDate - startDate) / (1000 * 60 * 60 * 24));
-      if (daysDiff < 0 || daysDiff % 4 !== 0) return null;
-      
-      const cyclePosition = Math.floor(daysDiff / 4);
+      if (!start_date || !start_group_id || state.cleaningGroups.length === 0) {
+        return { byActual: {}, byOriginal: {} };
+      }
       const startGroupIndex = state.cleaningGroups.findIndex(g => g.id === start_group_id);
-      if (startGroupIndex === -1) return null;
-      
-      const rotationOrder = [...state.cleaningGroups.slice(startGroupIndex), ...state.cleaningGroups.slice(0, startGroupIndex)];
-      return rotationOrder[cyclePosition % rotationOrder.length];
+      if (startGroupIndex === -1) return { byActual: {}, byOriginal: {} };
+
+      const rotationOrder = [
+        ...state.cleaningGroups.slice(startGroupIndex),
+        ...state.cleaningGroups.slice(0, startGroupIndex)
+      ];
+      const byActual = {};
+      const byOriginal = {};
+      let currentDateStr = start_date;
+
+      for (let slot = 0; slot < 500; slot++) {
+        const group = rotationOrder[slot % rotationOrder.length];
+        const postponement = state.cleaningPostponements.find(
+          p => p.group_id === group.id && p.original_date === currentDateStr
+        );
+        const actualDateStr = postponement ? postponement.new_date : currentDateStr;
+        const entry = {
+          originalDateStr: currentDateStr,
+          actualDateStr,
+          group,
+          postponed: !!postponement,
+          postponementId: postponement?.id
+        };
+        byActual[actualDateStr] = entry;
+        if (postponement) byOriginal[currentDateStr] = entry;
+
+        // Next slot is exactly 4 days after the actual (possibly postponed) date
+        const [y, m, d] = actualDateStr.split('-').map(Number);
+        const next = new Date(y, m - 1, d + 4);
+        currentDateStr = toLocalDateKey(next);
+      }
+      return { byActual, byOriginal };
     }
 
     function getDisplayInfoForDate(date) {
       const dateKey = toLocalDateKey(date);
-      const originalGroup = getGroupForDate(date);
-      
-      const postponement = state.cleaningPostponements.find(p => p.original_date === dateKey);
-      if (postponement) {
-        return { type: 'postponed-from', originalGroup, newDate: postponement.new_date, dateKey, postponementId: postponement.id };
+      const { byActual, byOriginal } = state.scheduleMap || { byActual: {}, byOriginal: {} };
+
+      const entry = byActual[dateKey];
+      if (entry) {
+        if (entry.postponed) {
+          return { type: 'postponed-to', group: entry.group, originalDate: entry.originalDateStr, dateKey };
+        }
+        return { type: 'scheduled', group: entry.group, dateKey };
       }
-      
-      const postponedTo = state.cleaningPostponements.find(p => p.new_date === dateKey);
-      if (postponedTo) {
-        const group = state.cleaningGroups.find(g => g.id === postponedTo.group_id);
-        return { type: 'postponed-to', group: group || { name: postponedTo.group_name }, originalDate: postponedTo.original_date, dateKey };
+
+      const movedEntry = byOriginal[dateKey];
+      if (movedEntry) {
+        return {
+          type: 'postponed-from',
+          originalGroup: movedEntry.group,
+          newDate: movedEntry.actualDateStr,
+          dateKey,
+          postponementId: movedEntry.postponementId
+        };
       }
-      
-      if (originalGroup) {
-        return { type: 'scheduled', group: originalGroup, dateKey };
-      }
-      
+
       return null;
     }
 
     function getUpcomingBirthdays() {
-      const today = new Date();
+      // Use midnight-to-midnight comparison so today's birthday shows as 0 days
+      const todayKey = todayLocalDateKey();
+      const [ty, tm, td] = todayKey.split('-').map(Number);
+      const todayMidnight = new Date(ty, tm - 1, td);
       return state.birthdays.map(b => {
-        const [year, month, day] = b.birth_date.split('-').map(Number);
-        const bday = new Date(today.getFullYear(), month - 1, day);
-        if (bday < today) bday.setFullYear(today.getFullYear() + 1);
-        const daysUntil = Math.ceil((bday - today) / (1000 * 60 * 60 * 24));
+        const [, month, day] = b.birth_date.split('-').map(Number);
+        const bday = new Date(ty, month - 1, day);
+        if (bday < todayMidnight) bday.setFullYear(ty + 1);
+        const daysUntil = Math.round((bday - todayMidnight) / (1000 * 60 * 60 * 24));
         return { ...b, name: getPersonName(b.person_id), daysUntil };
       }).filter(b => b.daysUntil <= 30).sort((a, b) => a.daysUntil - b.daysUntil);
     }
@@ -575,6 +642,7 @@
 
     // ============ RENDER FUNCTIONS ============
     function render() {
+      state.scheduleMap = buildCleaningScheduleMap();
       const content = document.getElementById('content');
       switch (state.currentTab) {
         case 'people': content.innerHTML = renderPeople(); break;
@@ -885,7 +953,7 @@
           if (displayInfo.type === 'scheduled') {
             bgColor = isToday ? 'bg-blue-100' : 'bg-purple-50';
             content = `<div class="text-xs mt-1 font-medium text-purple-700 truncate">${displayInfo.group.name}</div>`;
-            clickHandler = `onclick="showPostponeModal('${dateKey}', ${displayInfo.group.id}, '${displayInfo.group.name}')"`;
+            clickHandler = `onclick="showPostponeModal('${dateKey}', ${displayInfo.group.id})"`;
           } else if (displayInfo.type === 'postponed-from') {
             bgColor = isToday ? 'bg-blue-100' : 'bg-orange-50';
             borderColor = 'border-orange-300';
@@ -951,43 +1019,52 @@
       render();
     }
 
-    function showPostponeModal(dateKey, groupId, groupName) {
+    function showPostponeModal(dateKey, groupId) {
+      const groupName = state.cleaningGroups.find(g => g.id === groupId)?.name || '';
+      pendingPostponeData = { dateKey, groupId, groupName };
       const [year, month, day] = dateKey.split('-').map(Number);
       const date = new Date(year, month - 1, day);
-      
+      const today = new Date().toISOString().split('T')[0];
+
       document.getElementById('postponeModal').classList.remove('hidden');
-      document.getElementById('postponeModalContent').innerHTML = `
+      const content = document.getElementById('postponeModalContent');
+      // Use textContent for user data to avoid injection
+      content.innerHTML = `
         <div class="mb-4 p-3 bg-purple-50 rounded-lg">
           <p class="text-sm text-gray-600">Group:</p>
-          <p class="font-bold text-purple-700">${groupName}</p>
+          <p id="postponeGroupName" class="font-bold text-purple-700"></p>
           <p class="text-sm text-gray-600 mt-2">Originally scheduled:</p>
           <p class="font-medium text-gray-800">${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
         </div>
         <div class="mb-4">
           <label class="block text-sm text-gray-600 mb-2">Move to new date:</label>
-          <input type="date" id="postponeNewDate" min="${new Date().toISOString().split('T')[0]}"
+          <input type="date" id="postponeNewDate" min="${today}"
                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
         <div class="flex gap-3">
           <button onclick="hidePostponeModal()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">
             Cancel
           </button>
-          <button onclick="confirmPostpone('${dateKey}', ${groupId}, '${groupName}')" 
+          <button onclick="confirmPostpone()"
                   class="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">
             Postpone
           </button>
         </div>
       `;
+      document.getElementById('postponeGroupName').textContent = groupName;
     }
 
     function hidePostponeModal() {
       document.getElementById('postponeModal').classList.add('hidden');
+      pendingPostponeData = null;
     }
 
-    function confirmPostpone(originalDate, groupId, groupName) {
+    function confirmPostpone() {
+      if (!pendingPostponeData) return;
       const newDate = document.getElementById('postponeNewDate').value;
       if (newDate) {
-        postponeCleaning(originalDate, newDate, groupId, groupName);
+        const { dateKey, groupId, groupName } = pendingPostponeData;
+        postponeCleaning(dateKey, newDate, groupId, groupName);
         hidePostponeModal();
       }
     }
@@ -1049,9 +1126,10 @@
     }
 
     function renderVitalnya() {
-      const sortedBookings = [...state.vitalnyaBookings].sort((a, b) => 
-        new Date(a.booking_date + 'T' + a.time_start) - new Date(b.booking_date + 'T' + b.time_start)
-      );
+      const today = todayLocalDateKey();
+      const sortedBookings = [...state.vitalnyaBookings]
+        .filter(b => b.booking_date >= today)
+        .sort((a, b) => new Date(a.booking_date + 'T' + a.time_start) - new Date(b.booking_date + 'T' + b.time_start));
       
       return `
         <h3 class="font-bold text-lg mb-4 text-gray-800">Book Vitalnya Room</h3>
@@ -1116,6 +1194,9 @@
         `}
       `;
     }
+
+    // ============ POSTPONE MODAL STATE ============
+    let pendingPostponeData = null;
 
     // ============ INITIALIZATION ============
     async function init() {
