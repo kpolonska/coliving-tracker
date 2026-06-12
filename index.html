@@ -545,6 +545,15 @@
 
         if (!currentPerson) return;
 
+        // Check DB for an existing completion before upserting so a concurrent
+        // tap from another device doesn't trigger a second rotation.
+        const { data: existing } = await supabaseClient
+          .from('trash_completions')
+          .select('id')
+          .eq('completed_date', today)
+          .maybeSingle();
+        const alreadyDone = !!existing;
+
         // Save who completed it today
         const { error: completionError } = await supabaseClient.from('trash_completions').upsert({
           completed_date: today,
@@ -552,8 +561,8 @@
         }, { onConflict: 'completed_date' });
         if (completionError) throw completionError;
 
-        // Rotate the queue: move first person to the end
-        if (state.trashQueue.length > 1) {
+        // Only rotate if this is a brand-new completion — not a duplicate tap
+        if (!alreadyDone && state.trashQueue.length > 1) {
           const [first, ...rest] = state.trashQueue;
           const newQueue = [...rest, first];
 
@@ -571,7 +580,9 @@
     }
 
     function todayLocalDateKey() {
-      return toLocalDateKey(new Date());
+      // Use a fixed timezone so all devices and the notification script agree on "today".
+      // sv (Swedish) locale reliably formats as YYYY-MM-DD.
+      return new Date().toLocaleDateString('sv', { timeZone: 'Europe/Kiev' });
     }
 
     function isTrashCompletedToday() {
