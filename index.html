@@ -9,27 +9,28 @@
   <style>
     .tab-active { color: #4f46e5; border-bottom: 2px solid #4f46e5; }
     .loading { opacity: 0.5; pointer-events: none; }
+    .auth-tab-active { background: white; color: #4f46e5; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 p-4 md:p-6">
-  
+
   <!-- Config Modal -->
   <div id="configModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
       <h2 class="text-xl font-bold mb-4">Settings</h2>
-      
+
       <div class="mb-6">
         <h3 class="font-semibold text-gray-700 mb-2">Supabase Database</h3>
         <p class="text-sm text-gray-600 mb-3">Required for the app to work across devices.</p>
         <div class="space-y-3">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Supabase URL</label>
-            <input type="text" id="configUrl" placeholder="https://xxxxx.supabase.co" 
+            <input type="text" id="configUrl" placeholder="https://xxxxx.supabase.co"
                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Supabase Publishable Key</label>
-            <input type="text" id="configKey" placeholder="sb_publishable_xxx..." 
+            <input type="text" id="configKey" placeholder="sb_publishable_xxx..."
                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
         </div>
@@ -42,15 +43,105 @@
         Copy shareable link
       </button>
       <p class="text-xs text-gray-400 mt-2 text-center">Share this link so other devices connect automatically</p>
+      <button onclick="document.getElementById('configModal').classList.add('hidden')" class="w-full mt-2 px-4 py-2 text-gray-500 hover:text-gray-700 text-sm">
+        Close
+      </button>
     </div>
   </div>
 
-  <div class="max-w-6xl mx-auto">
+  <!-- New Password Modal (shown after password recovery link) -->
+  <div id="newPasswordModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+      <h2 class="text-xl font-bold mb-2">Set a New Password</h2>
+      <p class="text-sm text-gray-600 mb-4">Enter a new password for your account.</p>
+      <input type="password" id="newPasswordInput" placeholder="New password (min. 6 characters)"
+             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3">
+      <div id="newPasswordError" class="hidden mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg"></div>
+      <button id="newPasswordBtn" onclick="submitNewPassword()" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+        Update Password
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ AUTH SCREEN ============ -->
+  <div id="authScreen" class="hidden min-h-[80vh] flex items-center justify-center">
+    <div class="max-w-md w-full">
+      <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white text-center">
+          <div class="w-14 h-14 mx-auto mb-3 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+          </div>
+          <h1 class="text-2xl font-bold">Coliving Task Tracker</h1>
+          <p class="text-indigo-100 mt-1 text-sm">Sign in to manage tasks with your housemates</p>
+        </div>
+
+        <div class="p-6">
+          <!-- Sign in / Sign up toggle -->
+          <div class="flex bg-gray-100 rounded-lg p-1 mb-6">
+            <button id="authTabSignin" onclick="setAuthMode('signin')" class="flex-1 py-2 text-sm font-medium rounded-md transition-colors text-gray-500 auth-tab-active">
+              Sign In
+            </button>
+            <button id="authTabSignup" onclick="setAuthMode('signup')" class="flex-1 py-2 text-sm font-medium rounded-md transition-colors text-gray-500">
+              Sign Up
+            </button>
+          </div>
+
+          <!-- Messages -->
+          <div id="authError" class="hidden mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg"></div>
+          <div id="authInfo" class="hidden mb-4 p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg"></div>
+
+          <!-- Form -->
+          <form onsubmit="event.preventDefault(); handleAuthSubmit();" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input type="email" id="authEmail" required autocomplete="email" placeholder="you@example.com"
+                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <input type="password" id="authPassword" required autocomplete="current-password" placeholder="••••••••"
+                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <button type="submit" id="authSubmitBtn"
+                    class="w-full px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-colors">
+              Sign In
+            </button>
+          </form>
+
+          <div class="mt-4 text-center">
+            <button onclick="sendPasswordReset()" class="text-sm text-indigo-600 hover:text-indigo-800">
+              Forgot password?
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer with settings -->
+      <div class="mt-4 text-center">
+        <button onclick="showConfig()" class="text-sm text-gray-400 hover:text-gray-600">⚙️ Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN APP ============ -->
+  <div id="appScreen" class="hidden max-w-6xl mx-auto">
     <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
       <!-- Header -->
       <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
-        <h1 class="text-2xl md:text-3xl font-bold">Coliving Task Tracker</h1>
-        <p class="text-indigo-100 mt-1">Organize household tasks with your housemates</p>
+        <div class="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 class="text-2xl md:text-3xl font-bold">Coliving Task Tracker</h1>
+            <p class="text-indigo-100 mt-1">Organize household tasks with your housemates</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span id="userEmail" class="text-sm text-indigo-100 hidden sm:inline"></span>
+            <button onclick="signOut()" class="flex items-center gap-2 px-3 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg text-sm font-medium transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+              Sign Out
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -82,7 +173,7 @@
         <!-- Content loaded dynamically -->
       </div>
     </div>
-    
+
     <!-- Footer with settings -->
     <div class="mt-4 text-center">
       <button onclick="showConfig()" class="text-sm text-gray-400 hover:text-gray-600">⚙️ Settings</button>
@@ -137,7 +228,7 @@
       document.getElementById('configKey').value = key || '';
       document.getElementById('configModal').classList.remove('hidden');
     }
-    
+
     function initSupabase() {
       const { url, key } = getConfig();
       if (!url || !key) {
@@ -146,6 +237,171 @@
       }
       supabaseClient = window.supabase.createClient(url, key);
       return true;
+    }
+
+    // ============ AUTH ============
+    let currentUser = null;
+    let authMode = 'signin';
+
+    function setAuthMode(mode) {
+      authMode = mode;
+      const signinTab = document.getElementById('authTabSignin');
+      const signupTab = document.getElementById('authTabSignup');
+      const submitBtn = document.getElementById('authSubmitBtn');
+      const passwordInput = document.getElementById('authPassword');
+
+      if (mode === 'signin') {
+        signinTab.classList.add('auth-tab-active');
+        signupTab.classList.remove('auth-tab-active');
+        submitBtn.textContent = 'Sign In';
+        passwordInput.setAttribute('autocomplete', 'current-password');
+      } else {
+        signupTab.classList.add('auth-tab-active');
+        signinTab.classList.remove('auth-tab-active');
+        submitBtn.textContent = 'Create Account';
+        passwordInput.setAttribute('autocomplete', 'new-password');
+      }
+      hideAuthMessages();
+    }
+
+    function hideAuthMessages() {
+      document.getElementById('authError').classList.add('hidden');
+      document.getElementById('authInfo').classList.add('hidden');
+    }
+
+    function showAuthError(message) {
+      hideAuthMessages();
+      const el = document.getElementById('authError');
+      el.textContent = message;
+      el.classList.remove('hidden');
+    }
+
+    function showAuthInfo(message) {
+      hideAuthMessages();
+      const el = document.getElementById('authInfo');
+      el.textContent = message;
+      el.classList.remove('hidden');
+    }
+
+    function setAuthLoading(isLoading) {
+      const btn = document.getElementById('authSubmitBtn');
+      btn.disabled = isLoading;
+      btn.classList.toggle('loading', isLoading);
+      if (isLoading) {
+        btn.textContent = 'Please wait…';
+      } else {
+        btn.textContent = authMode === 'signin' ? 'Sign In' : 'Create Account';
+      }
+    }
+
+    async function handleAuthSubmit() {
+      const email = document.getElementById('authEmail').value.trim();
+      const password = document.getElementById('authPassword').value;
+
+      if (!email || !password) return;
+      if (authMode === 'signup' && password.length < 6) {
+        showAuthError('Password must be at least 6 characters.');
+        return;
+      }
+
+      hideAuthMessages();
+      setAuthLoading(true);
+
+      try {
+        if (authMode === 'signin') {
+          const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          // onAuthStateChange takes it from here
+        } else {
+          const { data, error } = await supabaseClient.auth.signUp({ email, password });
+          if (error) throw error;
+          if (data.user && !data.session) {
+            // Email confirmation is enabled on the project
+            showAuthInfo('Account created! Check your email for a confirmation link, then sign in.');
+            setAuthMode('signin');
+          }
+          // If confirmation is disabled, a session exists and onAuthStateChange logs them in
+        }
+      } catch (error) {
+        console.error('Auth error:', error);
+        showAuthError(error.message || 'Something went wrong. Please try again.');
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+
+    async function sendPasswordReset() {
+      const email = document.getElementById('authEmail').value.trim();
+      if (!email) {
+        showAuthError('Enter your email above first, then click "Forgot password?".');
+        return;
+      }
+      try {
+        const redirectTo = window.location.origin + window.location.pathname;
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+        if (error) throw error;
+        showAuthInfo('Password reset email sent. Check your inbox.');
+      } catch (error) {
+        console.error('Reset error:', error);
+        showAuthError(error.message || 'Could not send reset email.');
+      }
+    }
+
+    async function submitNewPassword() {
+      const password = document.getElementById('newPasswordInput').value;
+      const errorEl = document.getElementById('newPasswordError');
+      errorEl.classList.add('hidden');
+
+      if (password.length < 6) {
+        errorEl.textContent = 'Password must be at least 6 characters.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      const btn = document.getElementById('newPasswordBtn');
+      btn.disabled = true;
+      btn.classList.add('loading');
+
+      try {
+        const { error } = await supabaseClient.auth.updateUser({ password });
+        if (error) throw error;
+        document.getElementById('newPasswordModal').classList.add('hidden');
+        document.getElementById('newPasswordInput').value = '';
+        await showApp();
+      } catch (error) {
+        console.error('Password update error:', error);
+        errorEl.textContent = error.message || 'Could not update password.';
+        errorEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('loading');
+      }
+    }
+
+    async function signOut() {
+      try {
+        await supabaseClient.auth.signOut();
+      } catch (error) {
+        console.error('Sign out error:', error);
+      }
+      showAuth();
+    }
+
+    function showAuth() {
+      currentUser = null;
+      document.getElementById('appScreen').classList.add('hidden');
+      document.getElementById('authScreen').classList.remove('hidden');
+      document.getElementById('authPassword').value = '';
+    }
+
+    async function showApp() {
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('appScreen').classList.remove('hidden');
+      // Render email as text content (never HTML) to keep it injection-safe
+      document.getElementById('userEmail').textContent = currentUser?.email || '';
+      await loadAllData();
+      await rotateTrashQueueIfNeeded();
+      render();
     }
 
     // ============ STATE ============
@@ -187,7 +443,7 @@
         state.cleaningPostponements = postponements.data || [];
         state.birthdays = birthdays.data || [];
         state.vitalnyaBookings = bookings.data || [];
-        
+
         render();
       } catch (err) {
         console.error('Error loading data:', err);
@@ -199,7 +455,7 @@
       const input = document.getElementById('newPersonName');
       const name = input.value.trim();
       if (!name) return;
-      
+
       try {
         const { data, error } = await supabaseClient.from('people').insert({ name }).select().single();
         if (error) throw error;
@@ -214,16 +470,16 @@
     async function removePerson(id) {
       try {
         if (!confirm('Remove this person? They will also be removed from all queues and groups.')) return;
-        
+
         // Delete from all related tables first
         await supabaseClient.from('trash_completions').delete().eq('completed_by', id);
         await supabaseClient.from('trash_queue').delete().eq('person_id', id);
         await supabaseClient.from('birthdays').delete().eq('person_id', id);
         await supabaseClient.from('cleaning_group_members').delete().eq('person_id', id);
-        
+
         const { error } = await supabaseClient.from('people').delete().eq('id', id);
         if (error) throw error;
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error removing person:', error);
@@ -248,13 +504,13 @@
       try {
         // Clear and rebuild the queue in database
         await supabaseClient.from('trash_queue').delete().neq('id', 0);
-        
+
         const inserts = [
           ...state.trashQueue.slice(0, afterIndex).map((q, i) => ({ person_id: q.person_id, position: i })),
           { person_id: personId, position: afterIndex },
           ...state.trashQueue.slice(afterIndex).map((q, i) => ({ person_id: q.person_id, position: afterIndex + 1 + i }))
         ];
-        
+
         const { error } = await supabaseClient.from('trash_queue').insert(inserts);
         if (error) throw error;
         await loadAllData();
@@ -268,13 +524,13 @@
       try {
         const { error } = await supabaseClient.from('trash_queue').delete().eq('id', id);
         if (error) throw error;
-        
+
         // Reorder remaining items
         const remaining = state.trashQueue.filter(t => t.id !== id);
         for (let i = 0; i < remaining.length; i++) {
           await supabaseClient.from('trash_queue').update({ position: i }).eq('id', remaining[i].id);
         }
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error removing from queue:', error);
@@ -286,27 +542,27 @@
       try {
         const today = todayLocalDateKey();
         const currentPerson = state.trashQueue[0]?.person_id;
-        
+
         if (!currentPerson) return;
-        
+
         // Save who completed it today
-        const { error: completionError } = await supabaseClient.from('trash_completions').upsert({ 
-          completed_date: today, 
-          completed_by: currentPerson 
+        const { error: completionError } = await supabaseClient.from('trash_completions').upsert({
+          completed_date: today,
+          completed_by: currentPerson
         }, { onConflict: 'completed_date' });
         if (completionError) throw completionError;
-        
+
         // Rotate the queue: move first person to the end
         if (state.trashQueue.length > 1) {
           const [first, ...rest] = state.trashQueue;
           const newQueue = [...rest, first];
-          
+
           // Update positions in database
           for (let i = 0; i < newQueue.length; i++) {
             await supabaseClient.from('trash_queue').update({ position: i }).eq('id', newQueue[i].id);
           }
         }
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error marking trash done:', error);
@@ -362,16 +618,16 @@
         const name = nameInput.value.trim();
         const checkboxes = document.querySelectorAll('.group-member-checkbox:checked');
         const memberIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-        
+
         if (!name || memberIds.length === 0) return;
-        
+
         const { data: group, error } = await supabaseClient.from('cleaning_groups').insert({ name }).select().single();
         if (error) throw error;
-        
+
         const memberInserts = memberIds.map(person_id => ({ group_id: group.id, person_id }));
         const { error: memberError } = await supabaseClient.from('cleaning_group_members').insert(memberInserts);
         if (memberError) throw memberError;
-        
+
         nameInput.value = '';
         await loadAllData();
       } catch (error) {
@@ -383,21 +639,21 @@
     async function removeCleaningGroup(id) {
       try {
         if (!confirm('Remove this cleaning group?')) return;
-        
+
         // Clear schedule if this group is referenced in settings
         if (state.cleaningSettings.start_group_id === id) {
           await supabaseClient.from('cleaning_settings').update({ start_date: null, start_group_id: null }).eq('id', 1);
         }
-        
+
         // Delete members first
         await supabaseClient.from('cleaning_group_members').delete().eq('group_id', id);
-        
+
         // Delete postponements for this group
         await supabaseClient.from('cleaning_postponements').delete().eq('group_id', id);
-        
+
         const { error } = await supabaseClient.from('cleaning_groups').delete().eq('id', id);
         if (error) throw error;
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error removing group:', error);
@@ -444,7 +700,7 @@
           group_name: groupName
         });
         if (error) throw error;
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error postponing:', error);
@@ -456,7 +712,7 @@
       try {
         const { error } = await supabaseClient.from('cleaning_postponements').delete().eq('id', id);
         if (error) throw error;
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error canceling postponement:', error);
@@ -495,9 +751,9 @@
         const timeEnd = document.getElementById('vitalnyaTimeEnd').value;
         const name = document.getElementById('vitalnyaName').value.trim();
         const strict = document.getElementById('vitalnyaStrict').checked;
-        
+
         if (!date || !timeStart || !timeEnd || !name) return;
-        
+
         const { error } = await supabaseClient.from('vitalnya_bookings').insert({
           booking_date: date,
           time_start: timeStart,
@@ -506,13 +762,13 @@
           strict
         });
         if (error) throw error;
-        
+
         document.getElementById('vitalnyaDate').value = '';
         document.getElementById('vitalnyaTimeStart').value = '';
         document.getElementById('vitalnyaTimeEnd').value = '';
         document.getElementById('vitalnyaName').value = '';
         document.getElementById('vitalnyaStrict').checked = false;
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error adding booking:', error);
@@ -524,7 +780,7 @@
       try {
         const { error } = await supabaseClient.from('vitalnya_bookings').delete().eq('id', id);
         if (error) throw error;
-        
+
         await loadAllData();
       } catch (error) {
         console.error('Error removing booking:', error);
@@ -657,7 +913,7 @@
       return `
         <div class="mb-6">
           <div class="flex gap-2">
-            <input type="text" id="newPersonName" placeholder="Enter person's name" 
+            <input type="text" id="newPersonName" placeholder="Enter person's name"
                    onkeypress="if(event.key==='Enter')addPerson()"
                    class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <button onclick="addPerson()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2">
@@ -689,10 +945,10 @@
     function renderTrash() {
       const isCompleted = isTrashCompletedToday();
       // Show the person who completed it today, or the first in queue
-      const currentPerson = isCompleted 
+      const currentPerson = isCompleted
         ? getPersonName(state.trashCompletion.completed_by)
         : (state.trashQueue[0] ? getPersonName(state.trashQueue[0].person_id) : null);
-      
+
       return `
         <!-- Current person banner -->
         <div class="mb-6 p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border-2 border-green-200">
@@ -811,13 +1067,13 @@
     function renderCleaning() {
       const { start_date, start_group_id } = state.cleaningSettings;
       const hasSchedule = start_date && start_group_id;
-      
+
       return `
         ${state.cleaningGroups.length > 0 ? `
           <div class="mb-6">
             <div class="flex items-center justify-between mb-4">
               <h3 class="font-bold text-lg text-gray-800">Cleaning Schedule</h3>
-              <button onclick="document.getElementById('scheduleSetup').classList.toggle('hidden')" 
+              <button onclick="document.getElementById('scheduleSetup').classList.toggle('hidden')"
                       class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 text-sm flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                 ${hasSchedule ? 'Change Schedule' : 'Set Schedule'}
@@ -829,7 +1085,7 @@
               <div class="space-y-3">
                 <div>
                   <label class="block text-sm text-gray-600 mb-1">First cleaning date:</label>
-                  <input type="date" id="cleaningStartDate" value="${start_date || ''}" 
+                  <input type="date" id="cleaningStartDate" value="${start_date || ''}"
                          class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
                 <div>
@@ -851,7 +1107,7 @@
                 <p>Set a starting date and group to view the schedule</p>
               </div>
             `}
-            
+
             ${state.cleaningPostponements.length > 0 ? `
               <div class="mt-4 p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
                 <h4 class="font-bold text-gray-800 mb-3">Active Postponements</h4>
@@ -875,7 +1131,7 @@
 
         <h3 class="font-bold text-lg mb-3 text-gray-800">Create Cleaning Group</h3>
         <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-          <input type="text" id="newGroupName" placeholder="Group name (e.g., Team A)" 
+          <input type="text" id="newGroupName" placeholder="Group name (e.g., Team A)"
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3">
           <p class="text-sm text-gray-600 mb-2">Select people for this group:</p>
           <div class="space-y-2 mb-4">
@@ -926,29 +1182,29 @@
       const today = new Date();
 
       let calendarDays = '';
-      
+
       // Empty cells before first day
       for (let i = 0; i < startingDay; i++) {
         calendarDays += '<div class="p-1 min-h-20"></div>';
       }
-      
+
       // Days of month
       for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month, day);
         const isToday = date.toDateString() === today.toDateString();
         const displayInfo = getDisplayInfoForDate(date);
         const dateKey = toLocalDateKey(date);
-        
+
         let bgColor = '';
         let borderColor = 'border-gray-200';
         let content = '';
         let clickHandler = '';
-        
+
         if (isToday) {
           bgColor = 'bg-blue-100';
           borderColor = 'border-blue-400';
         }
-        
+
         if (displayInfo) {
           if (displayInfo.type === 'scheduled') {
             bgColor = isToday ? 'bg-blue-100' : 'bg-purple-50';
@@ -977,7 +1233,7 @@
             `;
           }
         }
-        
+
         calendarDays += `
           <div class="p-1 min-h-20 border rounded ${bgColor} ${borderColor} ${displayInfo?.type === 'scheduled' ? 'cursor-pointer hover:bg-purple-100' : ''}" ${clickHandler}>
             <div class="text-sm font-medium ${isToday ? 'text-blue-700' : 'text-gray-700'}">${day}</div>
@@ -1003,7 +1259,7 @@
             ${calendarDays}
           </div>
         </div>
-        
+
         <!-- Postpone Modal -->
         <div id="postponeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
           <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
@@ -1071,7 +1327,7 @@
 
     function renderBirthdays() {
       const upcoming = getUpcomingBirthdays();
-      
+
       return `
         <div class="mb-6">
           <h3 class="font-bold text-lg mb-4 text-gray-800">Upcoming Birthdays</h3>
@@ -1113,7 +1369,7 @@
                 <div class="p-4 bg-gray-50 rounded-lg">
                   <div class="flex items-center justify-between gap-4">
                     <span class="font-medium text-gray-800">${person.name}</span>
-                    <input type="date" value="${bday?.birth_date || ''}" 
+                    <input type="date" value="${bday?.birth_date || ''}"
                            onchange="setBirthday(${person.id}, this.value)"
                            class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   </div>
@@ -1130,7 +1386,7 @@
       const sortedBookings = [...state.vitalnyaBookings]
         .filter(b => b.booking_date >= today)
         .sort((a, b) => new Date(a.booking_date + 'T' + a.time_start) - new Date(b.booking_date + 'T' + b.time_start));
-      
+
       return `
         <h3 class="font-bold text-lg mb-4 text-gray-800">Book Vitalnya Room</h3>
         <div class="mb-6 p-4 bg-gray-50 rounded-lg">
@@ -1200,10 +1456,34 @@
 
     // ============ INITIALIZATION ============
     async function init() {
-      if (initSupabase()) {
-        await loadAllData();
-        await rotateTrashQueueIfNeeded();
-        render();
+      if (!initSupabase()) {
+        // Not configured yet — show the login screen behind the config modal
+        document.getElementById('authScreen').classList.remove('hidden');
+        return;
+      }
+
+      // React to login / logout / password-recovery events
+      supabaseClient.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          currentUser = session?.user || null;
+          document.getElementById('newPasswordModal').classList.remove('hidden');
+        } else if (event === 'SIGNED_IN' && session) {
+          if (currentUser?.id !== session.user.id) {
+            currentUser = session.user;
+            showApp();
+          }
+        } else if (event === 'SIGNED_OUT') {
+          showAuth();
+        }
+      });
+
+      // Restore an existing session on page load
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        currentUser = session.user;
+        await showApp();
+      } else {
+        showAuth();
       }
     }
 
