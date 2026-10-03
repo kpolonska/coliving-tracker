@@ -58,8 +58,8 @@ async function handleTrashDone(supabase, cb, requestedDate) {
     await tg('editMessageText', {
       chat_id: cb.message.chat.id,
       message_id: cb.message.message_id,
-      text: `✅ <b>${name}</b> виніс(ла) сміття!`,
-      parse_mode: 'HTML',
+      text: `✅ *${name}* винісла сміття!`,
+      parse_mode: 'Markdown',
       reply_markup: undoMarkup(today),
     });
     return tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Вже позначено' });
@@ -89,8 +89,8 @@ async function handleTrashDone(supabase, cb, requestedDate) {
   await tg('editMessageText', {
     chat_id: cb.message.chat.id,
     message_id: cb.message.message_id,
-    text: `✅ <b>${name}</b> виніс(ла) сміття!`,
-    parse_mode: 'HTML',
+    text: `✅ *${name}* винісла сміття!`,
+    parse_mode: 'Markdown',
     reply_markup: undoMarkup(today),
   });
   return tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Готово!' });
@@ -120,8 +120,8 @@ async function handleTrashUndo(supabase, cb, requestedDate) {
     await tg('editMessageText', {
       chat_id: cb.message.chat.id,
       message_id: cb.message.message_id,
-      text: `🗑 Сьогодні черга виносити сміття: <b>${name}</b>`,
-      parse_mode: 'HTML',
+      text: `🗑️ Сьогодні черга виносити сміття: *${name}*`,
+      parse_mode: 'Markdown',
       reply_markup: doneMarkup(today),
     });
     return tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Немає що скасовувати' });
@@ -149,8 +149,8 @@ async function handleTrashUndo(supabase, cb, requestedDate) {
   await tg('editMessageText', {
     chat_id: cb.message.chat.id,
     message_id: cb.message.message_id,
-    text: `🗑 Сьогодні черга виносити сміття: <b>${name}</b>`,
-    parse_mode: 'HTML',
+    text: `🗑️ Сьогодні черга виносити сміття: *${name}*`,
+    parse_mode: 'Markdown',
     reply_markup: doneMarkup(today),
   });
   return tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Скасовано' });
