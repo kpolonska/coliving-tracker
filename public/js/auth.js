@@ -1,108 +1,140 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.0/+esm';
+// Token storage — Supabase is a backend detail, invisible to the user.
+const TOKEN_KEY   = 'ct_token';
+const REFRESH_KEY = 'ct_refresh';
+const EXPIRES_KEY = 'ct_expires';
 
-let _supabase = null;
-
-export function initSupabase(url, anonKey) {
-  _supabase = createClient(url, anonKey);
-  return _supabase;
+export function saveSession({ access_token, refresh_token, expires_at }) {
+  localStorage.setItem(TOKEN_KEY, access_token);
+  if (refresh_token) localStorage.setItem(REFRESH_KEY, refresh_token);
+  if (expires_at)    localStorage.setItem(EXPIRES_KEY, String(expires_at));
 }
 
-export function getSupabase() {
-  return _supabase;
+export function clearSession() {
+  [TOKEN_KEY, REFRESH_KEY, EXPIRES_KEY].forEach(k => localStorage.removeItem(k));
 }
+
+export function getAccessToken()  { return localStorage.getItem(TOKEN_KEY); }
+export function getRefreshToken() { return localStorage.getItem(REFRESH_KEY); }
+
+export function isTokenExpired() {
+  const exp = localStorage.getItem(EXPIRES_KEY);
+  if (!exp) return true;
+  return Date.now() >= (parseInt(exp, 10) * 1000 - 60_000); // 1 min buffer
+}
+
+export function decodeUserFromToken(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return { userId: payload.sub, email: payload.email };
+  } catch {
+    return null;
+  }
+}
+
+// Parses tokens from the URL hash after Supabase email redirects (invite, recovery, confirmation).
+export function parseAuthHash() {
+  const hash = window.location.hash.slice(1);
+  if (!hash) return null;
+  const p = new URLSearchParams(hash);
+  const access_token = p.get('access_token');
+  if (!access_token) return null;
+  return {
+    access_token,
+    refresh_token: p.get('refresh_token') || '',
+    expires_at:    parseInt(p.get('expires_at') || '0', 10),
+    type:          p.get('type') || '',
+  };
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────────
 
 let _authMode = 'signin';
 
 export function setAuthMode(mode) {
   _authMode = mode;
-  const signinTab = document.getElementById('authTabSignin');
-  const signupTab = document.getElementById('authTabSignup');
+  document.getElementById('authTabSignin').classList.toggle('auth-tab-active', mode === 'signin');
+  document.getElementById('authTabSignup').classList.toggle('auth-tab-active', mode === 'signup');
   const btn = document.getElementById('authSubmitBtn');
-  if (mode === 'signin') {
-    signinTab.classList.add('auth-tab-active');
-    signupTab.classList.remove('auth-tab-active');
-    btn.textContent = 'Sign In';
-    document.getElementById('authPassword').setAttribute('autocomplete', 'current-password');
-  } else {
-    signupTab.classList.add('auth-tab-active');
-    signinTab.classList.remove('auth-tab-active');
-    btn.textContent = 'Create Account';
-    document.getElementById('authPassword').setAttribute('autocomplete', 'new-password');
-  }
-  _hideAuthMessages();
+  btn.textContent = mode === 'signin' ? 'Sign In' : 'Create Account';
+  document.getElementById('authPassword').setAttribute('autocomplete',
+    mode === 'signin' ? 'current-password' : 'new-password');
+  _hideMessages();
 }
 
-function _hideAuthMessages() {
+function _hideMessages() {
   document.getElementById('authError').classList.add('hidden');
   document.getElementById('authInfo').classList.add('hidden');
 }
-function _showAuthError(msg) {
-  _hideAuthMessages();
+function _showError(msg) {
+  _hideMessages();
   const el = document.getElementById('authError');
   el.textContent = msg;
   el.classList.remove('hidden');
 }
-function _showAuthInfo(msg) {
-  _hideAuthMessages();
+function _showInfo(msg) {
+  _hideMessages();
   const el = document.getElementById('authInfo');
   el.textContent = msg;
   el.classList.remove('hidden');
 }
-function _setAuthLoading(loading) {
+function _setLoading(on) {
   const btn = document.getElementById('authSubmitBtn');
-  btn.disabled = loading;
-  btn.classList.toggle('loading', loading);
-  btn.textContent = loading ? 'Please wait…' : (_authMode === 'signin' ? 'Sign In' : 'Create Account');
+  btn.disabled = on;
+  btn.classList.toggle('loading', on);
+  if (!on) btn.textContent = _authMode === 'signin' ? 'Sign In' : 'Create Account';
+  else btn.textContent = 'Please wait…';
 }
 
 export async function handleAuthSubmit() {
-  const email = document.getElementById('authEmail').value.trim();
+  const email    = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if (!email || !password) return;
   if (_authMode === 'signup' && password.length < 6) {
-    _showAuthError('Password must be at least 6 characters.');
+    _showError('Password must be at least 6 characters.');
     return;
   }
-  _hideAuthMessages();
-  _setAuthLoading(true);
+  _hideMessages();
+  _setLoading(true);
   try {
-    if (_authMode === 'signin') {
-      const { error } = await _supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-    } else {
-      const { data, error } = await _supabase.auth.signUp({ email, password });
-      if (error) throw error;
-      if (data.user && !data.session) {
-        _showAuthInfo('Account created! Check your email for a confirmation link, then sign in.');
-        setAuthMode('signin');
-      }
-    }
-  } catch (error) {
-    _showAuthError(error.message || 'Something went wrong. Please try again.');
+    const endpoint = _authMode === 'signin' ? '/auth/signin' : '/auth/signup';
+    const res = await fetch(`/api${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    saveSession(data);
+    window.dispatchEvent(new CustomEvent('auth:signedIn', {
+      detail: { userId: data.userId, email: data.email },
+    }));
+  } catch (e) {
+    _showError(e.message || 'Something went wrong. Please try again.');
   } finally {
-    _setAuthLoading(false);
+    _setLoading(false);
   }
 }
 
 export async function sendPasswordReset() {
   const email = document.getElementById('authEmail').value.trim();
-  if (!email) {
-    _showAuthError('Enter your email above first, then click "Forgot password?".');
-    return;
-  }
+  if (!email) { _showError('Enter your email above first.'); return; }
   try {
-    const redirectTo = window.location.origin + window.location.pathname;
-    const { error } = await _supabase.auth.resetPasswordForEmail(email, { redirectTo });
-    if (error) throw error;
-    _showAuthInfo('Password reset email sent. Check your inbox.');
-  } catch (error) {
-    _showAuthError(error.message || 'Could not send reset email.');
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, redirectTo: window.location.origin + window.location.pathname }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    _showInfo('Password reset email sent. Check your inbox.');
+  } catch (e) {
+    _showError(e.message || 'Could not send reset email.');
   }
 }
 
 export async function submitNewPassword() {
   const password = document.getElementById('newPasswordInput').value;
-  const errorEl = document.getElementById('newPasswordError');
+  const errorEl  = document.getElementById('newPasswordError');
   errorEl.classList.add('hidden');
   if (password.length < 6) {
     errorEl.textContent = 'Password must be at least 6 characters.';
@@ -113,13 +145,20 @@ export async function submitNewPassword() {
   btn.disabled = true;
   btn.classList.add('loading');
   try {
-    const { error } = await _supabase.auth.updateUser({ password });
-    if (error) throw error;
+    const res = await fetch('/api/auth/update-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    clearSession();
     document.getElementById('newPasswordModal').classList.add('hidden');
     document.getElementById('newPasswordInput').value = '';
-    window.dispatchEvent(new Event('auth:passwordUpdated'));
-  } catch (error) {
-    errorEl.textContent = error.message || 'Could not update password.';
+    // Show auth screen with success message
+    window.dispatchEvent(new CustomEvent('auth:passwordUpdated'));
+  } catch (e) {
+    errorEl.textContent = e.message || 'Could not update password.';
     errorEl.classList.remove('hidden');
   } finally {
     btn.disabled = false;

@@ -1,9 +1,7 @@
 // Handles Telegram callback_query taps for the trash "done / undo" inline buttons.
-// Ported from the original Supabase Edge Function.
 import { createClient } from '@supabase/supabase-js';
 
 const {
-  TELEGRAM_BOT_TOKEN,
   TELEGRAM_WEBHOOK_SECRET,
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
@@ -20,15 +18,17 @@ function undoMarkup(dateStr) {
   return { inline_keyboard: [[{ text: '↩️ Скасувати', callback_data: `tu:${dateStr}` }]] };
 }
 
-async function tg(method, body) {
-  const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!json.ok) console.error('Telegram error', method, json);
-  return json;
+function makeTg(botToken) {
+  return async function tg(method, body) {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (!json.ok) console.error('Telegram error', method, json);
+    return json;
+  };
 }
 
 async function getPersonName(supabase, id) {
@@ -36,7 +36,7 @@ async function getPersonName(supabase, id) {
   return data?.name ?? 'Хтось';
 }
 
-async function handleTrashDone(supabase, cb, requestedDate) {
+async function handleTrashDone(supabase, tg, colivingId, cb, requestedDate) {
   const today = kievDate();
 
   if (requestedDate !== today) {
@@ -49,7 +49,8 @@ async function handleTrashDone(supabase, cb, requestedDate) {
 
   const { data: existing } = await supabase
     .from('trash_completions')
-    .select('completed_by')
+    .select('completed_by, people!inner(coliving_id)')
+    .eq('people.coliving_id', colivingId)
     .eq('completed_date', today)
     .maybeSingle();
 
@@ -66,7 +67,10 @@ async function handleTrashDone(supabase, cb, requestedDate) {
   }
 
   const { data: queue } = await supabase
-    .from('trash_queue').select('id,person_id').order('position');
+    .from('trash_queue')
+    .select('id, person_id, people!inner(coliving_id)')
+    .eq('people.coliving_id', colivingId)
+    .order('position');
 
   if (!queue?.length) {
     return tg('answerCallbackQuery', {
@@ -96,7 +100,7 @@ async function handleTrashDone(supabase, cb, requestedDate) {
   return tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Готово!' });
 }
 
-async function handleTrashUndo(supabase, cb, requestedDate) {
+async function handleTrashUndo(supabase, tg, colivingId, cb, requestedDate) {
   const today = kievDate();
 
   if (requestedDate !== today) {
@@ -109,13 +113,17 @@ async function handleTrashUndo(supabase, cb, requestedDate) {
 
   const { data: existing } = await supabase
     .from('trash_completions')
-    .select('completed_by')
+    .select('completed_by, people!inner(coliving_id)')
+    .eq('people.coliving_id', colivingId)
     .eq('completed_date', today)
     .maybeSingle();
 
   if (!existing) {
     const { data: queue } = await supabase
-      .from('trash_queue').select('person_id').order('position').limit(1);
+      .from('trash_queue')
+      .select('person_id, people!inner(coliving_id)')
+      .eq('people.coliving_id', colivingId)
+      .order('position').limit(1);
     const name = queue?.length ? await getPersonName(supabase, queue[0].person_id) : 'нікого';
     await tg('editMessageText', {
       chat_id: cb.message.chat.id,
@@ -129,7 +137,10 @@ async function handleTrashUndo(supabase, cb, requestedDate) {
 
   const completedById = existing.completed_by;
   const { data: queue } = await supabase
-    .from('trash_queue').select('id,person_id').order('position');
+    .from('trash_queue')
+    .select('id, person_id, people!inner(coliving_id)')
+    .eq('people.coliving_id', colivingId)
+    .order('position');
 
   if (queue && queue.length > 1) {
     const idx = queue.findIndex(q => q.person_id === completedById);
@@ -177,11 +188,25 @@ export const handler = async (event) => {
     auth: { persistSession: false },
   });
 
+  // Identify which coliving this callback belongs to via chat ID
+  const chatId = String(cb.message?.chat?.id);
+  const { data: coliving } = await supabase
+    .from('colivings')
+    .select('id, telegram_bot_token')
+    .eq('telegram_chat_id', chatId)
+    .single();
+
+  if (!coliving?.telegram_bot_token) {
+    return { statusCode: 200, body: 'ok' };
+  }
+
+  const tg = makeTg(coliving.telegram_bot_token);
+
   try {
     if (cb.data.startsWith('td:')) {
-      await handleTrashDone(supabase, cb, cb.data.slice(3));
+      await handleTrashDone(supabase, tg, coliving.id, cb, cb.data.slice(3));
     } else if (cb.data.startsWith('tu:')) {
-      await handleTrashUndo(supabase, cb, cb.data.slice(3));
+      await handleTrashUndo(supabase, tg, coliving.id, cb, cb.data.slice(3));
     } else {
       await tg('answerCallbackQuery', { callback_query_id: cb.id });
     }

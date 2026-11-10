@@ -1,4 +1,14 @@
 export const state = {
+  // Auth & coliving context
+  userId: null,
+  userEmail: '',
+  colivingId: null,
+  colivingName: '',
+  isOwner: false,
+  linkedPersonId: null,
+  members: [],
+
+  // App data
   people: [],
   trashQueue: [],
   trashCompletion: null,

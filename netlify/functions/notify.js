@@ -3,8 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  TELEGRAM_BOT_TOKEN,
-  TELEGRAM_CHAT_ID,
   NOTIFICATION_HOUR_MORNING,
   NOTIFICATION_HOUR_EVENING,
 } = process.env;
@@ -38,11 +36,11 @@ function trimSeconds(timeStr) {
   return timeStr.split(':').slice(0, 2).join(':');
 }
 
-async function sendTelegram(text, replyMarkup = null) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-  const body = { chat_id: TELEGRAM_CHAT_ID, text, parse_mode: 'Markdown' };
+async function sendTelegram(botToken, chatId, text, replyMarkup = null) {
+  if (!botToken || !chatId) return;
+  const body = { chat_id: chatId, text, parse_mode: 'Markdown' };
   if (replyMarkup) body.reply_markup = replyMarkup;
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -76,97 +74,103 @@ function findCleaningGroupForDate(todayStr, settings, groups, postponements) {
   return null;
 }
 
-export const handler = async () => {
-  const today = kievDate();
-  const hour = kievHour();
-  const minute = kievMinute();
-  const morningHour = parseInt(NOTIFICATION_HOUR_MORNING || '6', 10);
-  const eveningHour = parseInt(NOTIFICATION_HOUR_EVENING || '21', 10);
+// Returns Kiev UTC offset in milliseconds (handles DST automatically)
+function getKievOffsetMs(date) {
+  const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
+  const kievStr = date.toLocaleString('en-US', { timeZone: 'Europe/Kiev' });
+  return (new Date(kievStr) - new Date(utcStr));
+}
 
-  // Only act in the :00-:14 window of target hours — the cron's :00 firing.
-  // Subsequent :15/:30/:45 firings are skipped for these.
-  const isFirstWindow = minute < 15;
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-  });
-
+async function processColiving(supabase, coliving, { today, hour, minute, morningHour, eveningHour, isFirstWindow }) {
+  const { telegram_bot_token: botToken, telegram_chat_id: chatId, id: colivingId } = coliving;
+  const send = (text, markup = null) => sendTelegram(botToken, chatId, text, markup);
   const sent = [];
 
   // ── Morning ───────────────────────────────────────────────────────────────
   if (hour === morningHour && isFirstWindow) {
-    // Trash
     const [{ data: queue }, { data: alreadyDone }] = await Promise.all([
-      supabase.from('trash_queue').select('position, people(name)').order('position').limit(1),
-      supabase.from('trash_completions').select('completed_date').eq('completed_date', today).maybeSingle(),
+      supabase.from('trash_queue')
+        .select('position, people!inner(name, coliving_id)')
+        .eq('people.coliving_id', colivingId)
+        .order('position').limit(1),
+      supabase.from('trash_completions')
+        .select('completed_date, people!inner(coliving_id)')
+        .eq('people.coliving_id', colivingId)
+        .eq('completed_date', today)
+        .maybeSingle(),
     ]);
 
     if (queue?.[0] && !alreadyDone) {
-      await sendTelegram(
-        `🗑️ Сьогодні черга виносити сміття: *${queue[0].people.name}*`,
-        doneMarkup(today)
-      );
+      await send(`🗑️ Сьогодні черга виносити сміття: *${queue[0].people.name}*`, doneMarkup(today));
       sent.push('morning:trash');
     }
 
-    // Cleaning
     const [{ data: settings }, { data: groups }, { data: postponements }] = await Promise.all([
-      supabase.from('cleaning_settings').select('*').eq('id', 1).single(),
-      supabase.from('cleaning_groups').select('*'),
-      supabase.from('cleaning_postponements').select('*'),
+      supabase.from('cleaning_settings').select('*').eq('coliving_id', colivingId).single(),
+      supabase.from('cleaning_groups').select('*').eq('coliving_id', colivingId),
+      supabase.from('cleaning_postponements').select('*').in(
+        'group_id',
+        (await supabase.from('cleaning_groups').select('id').eq('coliving_id', colivingId)).data?.map(g => g.id) || []
+      ),
     ]);
 
     if (settings?.start_date && settings?.start_group_id) {
       const group = findCleaningGroupForDate(today, settings, groups || [], postponements || []);
       if (group) {
-        await sendTelegram(`🧹 Сьогодні черга прибирати: *${group.name}*`);
+        await send(`🧹 Сьогодні черга прибирати: *${group.name}*`);
         sent.push('morning:cleaning');
       }
     }
 
-    // Birthdays
-    const { data: birthdays } = await supabase.from('birthdays').select('birth_date, people(name)');
+    const { data: birthdays } = await supabase
+      .from('birthdays')
+      .select('birth_date, people!inner(name, coliving_id)')
+      .eq('people.coliving_id', colivingId);
     const [, todayMonth, todayDay] = today.split('-').map(Number);
     for (const b of birthdays || []) {
       const [, bMonth, bDay] = b.birth_date.split('-').map(Number);
       if (bMonth === todayMonth && bDay === todayDay) {
-        await sendTelegram(`🎂 Сьогодні день народження у *${b.people.name}*! 🎉`);
+        await send(`🎂 Сьогодні день народження у *${b.people.name}*! 🎉`);
         sent.push(`morning:birthday:${b.people.name}`);
       }
     }
   }
 
-  // ── Evening — always send, content depends on completion status ───────────
+  // ── Evening ───────────────────────────────────────────────────────────────
   if (hour === eveningHour && isFirstWindow) {
     const [{ data: queue }, { data: done }] = await Promise.all([
-      supabase.from('trash_queue').select('position, people(name)').order('position').limit(1),
-      supabase.from('trash_completions').select('completed_by, people(name)').eq('completed_date', today).maybeSingle(),
+      supabase.from('trash_queue')
+        .select('position, people!inner(name, coliving_id)')
+        .eq('people.coliving_id', colivingId)
+        .order('position').limit(1),
+      supabase.from('trash_completions')
+        .select('completed_by, people!inner(name, coliving_id)')
+        .eq('people.coliving_id', colivingId)
+        .eq('completed_date', today)
+        .maybeSingle(),
     ]);
 
     if (queue?.[0]) {
       if (done) {
-        await sendTelegram(`✅ *${done.people.name}* винісла сміття!`);
+        await send(`✅ *${done.people.name}* винісла сміття!`);
         sent.push('evening:done');
       } else {
-        await sendTelegram(
-          `*${queue[0].people.name}*, не забудь винести сміття))`,
-          doneMarkup(today)
-        );
+        await send(`*${queue[0].people.name}*, не забудь винести сміття))`, doneMarkup(today));
         sent.push('evening:reminder');
       }
     }
   }
 
-  // ── Vitalnya — every 15 min, uses reminder_sent flag to avoid duplicates ──
+  // ── Vitalnya (every 15 min) ───────────────────────────────────────────────
   const now = Date.now();
   const { data: bookings } = await supabase
     .from('vitalnya_bookings')
     .select('*')
+    .eq('coliving_id', colivingId)
     .gte('booking_date', today)
     .eq('reminder_sent', false);
 
   for (const b of bookings || []) {
-    // Parse booking start as Kiev local time
     const [bY, bM, bD] = b.booking_date.split('-').map(Number);
     const [bH, bMin] = b.time_start.split(':').map(Number);
     const kievOffsetMs = getKievOffsetMs(new Date());
@@ -179,18 +183,40 @@ export const handler = async () => {
         `*${b.name}* — ${formatUkrDate(b.booking_date)}, ${trimSeconds(b.time_start)} - ${trimSeconds(b.time_end)}`,
       ];
       if (b.strict) lines.push('🚫 Не турбувати');
-      await sendTelegram(lines.join('\n'));
+      await send(lines.join('\n'));
       await supabase.from('vitalnya_bookings').update({ reminder_sent: true }).eq('id', b.id);
       sent.push(`vitalnya:${b.id}`);
     }
   }
 
-  return { statusCode: 200, body: `Sent: ${sent.join(', ') || 'nothing'}` };
-};
-
-// Returns Kiev UTC offset in milliseconds (handles DST automatically)
-function getKievOffsetMs(date) {
-  const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
-  const kievStr = date.toLocaleString('en-US', { timeZone: 'Europe/Kiev' });
-  return (new Date(kievStr) - new Date(utcStr));
+  return sent;
 }
+
+export const handler = async () => {
+  const today = kievDate();
+  const hour = kievHour();
+  const minute = kievMinute();
+  const morningHour = parseInt(NOTIFICATION_HOUR_MORNING || '6', 10);
+  const eveningHour = parseInt(NOTIFICATION_HOUR_EVENING || '21', 10);
+  const isFirstWindow = minute < 15;
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  });
+
+  const { data: colivings } = await supabase
+    .from('colivings')
+    .select('id, telegram_bot_token, telegram_chat_id')
+    .not('telegram_bot_token', 'is', null)
+    .not('telegram_chat_id', 'is', null);
+
+  const ctx = { today, hour, minute, morningHour, eveningHour, isFirstWindow };
+  const allSent = [];
+
+  for (const coliving of colivings || []) {
+    const sent = await processColiving(supabase, coliving, ctx);
+    allSent.push(...sent.map(s => `c${coliving.id}:${s}`));
+  }
+
+  return { statusCode: 200, body: `Sent: ${allSent.join(', ') || 'nothing'}` };
+};
