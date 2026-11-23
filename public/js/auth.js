@@ -52,12 +52,12 @@ let _authMode = 'signin';
 
 export function setAuthMode(mode) {
   _authMode = mode;
-  document.getElementById('authTabSignin').classList.toggle('auth-tab-active', mode === 'signin');
-  document.getElementById('authTabSignup').classList.toggle('auth-tab-active', mode === 'signup');
-  const btn = document.getElementById('authSubmitBtn');
-  btn.textContent = mode === 'signin' ? 'Sign In' : 'Create Account';
+  document.getElementById('authSubmitBtn').textContent = mode === 'signin' ? 'Sign In' : 'Create Account';
   document.getElementById('authPassword').setAttribute('autocomplete',
     mode === 'signin' ? 'current-password' : 'new-password');
+  document.getElementById('forgotPasswordLink').classList.toggle('hidden', mode !== 'signin');
+  document.getElementById('authSwitchToSignup').classList.toggle('hidden', mode !== 'signin');
+  document.getElementById('authSwitchToSignin').classList.toggle('hidden', mode !== 'signup');
   _hideMessages();
 }
 
@@ -104,6 +104,12 @@ export async function handleAuthSubmit() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
+    if (_authMode === 'signup') {
+      document.getElementById('authPassword').value = '';
+      setAuthMode('signin');
+      _showInfo('Account created! Please sign in.');
+      return;
+    }
     saveSession(data);
     window.dispatchEvent(new CustomEvent('auth:signedIn', {
       detail: { userId: data.userId, email: data.email },

@@ -10,6 +10,6 @@
   },
   "devDependencies": {
     "@netlify/functions": "^2.8.1",
-    "netlify-cli": "^17.0.0"
+    "netlify-cli": "^27.20.1"
   }
 }

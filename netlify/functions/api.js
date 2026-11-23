@@ -117,9 +117,14 @@ export const handler = async (event) => {
   }
 
   if (method === 'POST' && path === '/auth/reset-password') {
-    // Email sending not yet configured. Do not call Supabase resetPasswordForEmail
-    // as it would send email directly to the user exposing the database vendor.
-    return err(503, 'Password reset is not available yet. Contact your flat admin to reset your password.');
+    const { email, redirectTo } = body;
+    if (!email) return err(400, 'Email is required');
+    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    const { error } = await anonClient.auth.resetPasswordForEmail(email, {
+      redirectTo: redirectTo || undefined,
+    });
+    if (error) return err(500, error.message);
+    return ok({ ok: true });
   }
 
   if (method === 'POST' && path === '/auth/update-password') {
