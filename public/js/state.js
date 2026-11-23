@@ -2,7 +2,9 @@ export const state = {
   // Auth & coliving context
   userId: null,
   userEmail: '',
-  colivingId: null,
+  displayName: '',
+  memberships: [],        // [{ colivingId, colivingName, role, linkedPersonId }]
+  colivingId: null,       // active coliving
   colivingName: '',
   isOwner: false,
   linkedPersonId: null,

@@ -1,6 +1,8 @@
 import { getAccessToken, getRefreshToken, isTokenExpired, saveSession, clearSession } from './auth.js';
 
 let _refreshPromise = null;
+let _activeColivingId = null;
+export function setActiveColiving(id) { _activeColivingId = id; }
 
 async function _token() {
   if (!isTokenExpired()) return getAccessToken();
@@ -27,6 +29,7 @@ async function _fetch(path, options = {}) {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(_activeColivingId ? { 'X-Coliving-Id': _activeColivingId } : {}),
       ...options.headers,
     },
   });
@@ -61,10 +64,23 @@ export const acceptInvite    = (invitationId) =>
 export const linkPerson      = (personId) =>
   _fetch('/me/link-person', { method: 'POST', body: JSON.stringify({ personId }) });
 
-export const leaveColiving   = () => _fetch('/me/leave', { method: 'POST' });
+export const leaveColiving   = (colivingId) =>
+  _fetch('/me/leave', { method: 'POST', body: JSON.stringify({ colivingId }), headers: { 'X-Coliving-Id': colivingId } });
 
 export const removeMember    = (memberId) =>
   _fetch('/colivings/members', { method: 'DELETE', body: JSON.stringify({ memberId }) });
+
+export const generateInviteCode = (colivingId) =>
+  _fetch('/invite-codes', { method: 'POST', body: JSON.stringify({ colivingId }), headers: { 'X-Coliving-Id': '' } });
+
+export const previewInviteCode = (code) =>
+  _fetch(`/invite-codes/preview?code=${encodeURIComponent(code)}`, { headers: { 'X-Coliving-Id': '' } });
+
+export const joinByCode = (code) =>
+  _fetch('/invite-codes/join', { method: 'POST', body: JSON.stringify({ code }), headers: { 'X-Coliving-Id': '' } });
+
+export const updateProfile = (displayName) =>
+  _fetch('/profile', { method: 'PUT', body: JSON.stringify({ displayName }), headers: { 'X-Coliving-Id': '' } });
 
 export async function loadAllData() {
   const [people, trashData, cleaningData, birthdays, vitalnya] = await Promise.all([

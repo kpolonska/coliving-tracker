@@ -25,13 +25,76 @@ async function authedUser(event) {
   return user;
 }
 
-async function getUserMembership(userId, admin) {
+async function getUserMemberships(userId, admin) {
   const { data } = await admin
     .from('coliving_members')
-    .select('coliving_id, role, linked_person_id, colivings(id, name)')
+    .select('id, coliving_id, role, linked_person_id, joined_at, colivings(id, name)')
+    .eq('user_id', userId);
+  return data || [];
+}
+
+async function getUserMembership(userId, colivingId, admin) {
+  const { data } = await admin
+    .from('coliving_members')
+    .select('id, coliving_id, role, linked_person_id, colivings(id, name)')
     .eq('user_id', userId)
+    .eq('coliving_id', colivingId)
     .single();
   return data || null;
+}
+
+async function syncMemberToPeople(userId, colivingId, admin) {
+  const { data: { user } } = await admin.auth.admin.getUserById(userId);
+  const displayName = user.user_metadata?.display_name || user.email || 'Unknown';
+
+  const { data: membership } = await admin
+    .from('coliving_members')
+    .select('linked_person_id')
+    .eq('user_id', userId)
+    .eq('coliving_id', colivingId)
+    .single();
+
+  if (membership?.linked_person_id) {
+    await admin.from('people').update({ name: displayName }).eq('id', membership.linked_person_id);
+    return;
+  }
+
+  const { data: person } = await admin
+    .from('people').insert({ name: displayName, coliving_id: colivingId }).select().single();
+  if (person) {
+    await admin.from('coliving_members')
+      .update({ linked_person_id: person.id })
+      .eq('user_id', userId)
+      .eq('coliving_id', colivingId);
+  }
+}
+
+async function removeMemberPerson(userId, colivingId, admin) {
+  const { data: membership } = await admin
+    .from('coliving_members')
+    .select('linked_person_id')
+    .eq('user_id', userId)
+    .eq('coliving_id', colivingId)
+    .single();
+  if (!membership?.linked_person_id) return;
+  const personId = membership.linked_person_id;
+  await Promise.all([
+    admin.from('trash_queue').delete().eq('person_id', personId),
+    admin.from('trash_completions').delete().eq('completed_by', personId),
+    admin.from('birthdays').delete().eq('person_id', personId),
+    admin.from('cleaning_group_members').delete().eq('person_id', personId),
+  ]);
+  await admin.from('people').delete().eq('id', personId).eq('coliving_id', colivingId);
+}
+
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    if (i === 4) code += '-';
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
 }
 
 export const handler = async (event) => {
@@ -152,16 +215,31 @@ export const handler = async (event) => {
   const user = await authedUser(event);
   if (!user) return err(401, 'Unauthorized');
 
-  // GET /me
+  // GET /me — returns display name + all memberships
   if (method === 'GET' && path === '/me') {
-    const membership = await getUserMembership(user.id, admin);
-    if (!membership) return ok(null);
+    const memberships = await getUserMemberships(user.id, admin);
     return ok({
-      colivingId: membership.coliving_id,
-      colivingName: membership.colivings.name,
-      role: membership.role,
-      linkedPersonId: membership.linked_person_id,
+      displayName: user.user_metadata?.display_name || '',
+      memberships: memberships
+        .filter(m => m.colivings)
+        .map(m => ({
+          colivingId: m.coliving_id,
+          colivingName: m.colivings.name,
+          role: m.role,
+          linkedPersonId: m.linked_person_id,
+        })),
     });
+  }
+
+  // PUT /profile — update display name
+  if (method === 'PUT' && path === '/profile') {
+    const { displayName } = body;
+    if (typeof displayName !== 'string') return err(400, 'displayName required');
+    const { error } = await admin.auth.admin.updateUserById(user.id, {
+      user_metadata: { ...user.user_metadata, display_name: displayName.trim() },
+    });
+    if (error) return err(500, error.message);
+    return ok({ ok: true });
   }
 
   // POST /colivings — create a new coliving + owner membership
@@ -177,6 +255,7 @@ export const handler = async (event) => {
       role: 'owner',
     });
     if (me) return err(500, me.message);
+    await syncMemberToPeople(user.id, coliving.id, admin);
     return created({ colivingId: coliving.id, colivingName: coliving.name, role: 'owner' });
   }
 
@@ -214,13 +293,68 @@ export const handler = async (event) => {
     if (me) return err(500, me.message);
     await admin.from('invitations').update({ accepted: true }).eq('id', invitationId);
     const { data: col } = await admin.from('colivings').select('name').eq('id', inv.coliving_id).single();
+    await syncMemberToPeople(user.id, inv.coliving_id, admin);
     return ok({ colivingId: inv.coliving_id, colivingName: col.name, role: 'member' });
   }
 
+  // ── INVITE CODE ROUTES ────────────────────────────────────────────────────
+
+  // POST /invite-codes — generate a code (owner only, colivingId in body)
+  if (method === 'POST' && path === '/invite-codes') {
+    const { colivingId: cid } = body;
+    if (!cid) return err(400, 'colivingId required');
+    const membership = await getUserMembership(user.id, cid, admin);
+    if (!membership) return err(403, 'Not a member of this coliving');
+    if (membership.role !== 'owner') return err(403, 'Only owners can generate invite codes');
+    const code = generateCode();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const { error } = await admin.from('invite_codes').insert({
+      coliving_id: cid, code, created_by: user.id, expires_at: expiresAt,
+    });
+    if (error) return err(500, error.message);
+    return created({ code, expiresAt });
+  }
+
+  // GET /invite-codes/preview?code=XXX — get coliving info before joining
+  if (method === 'GET' && path === '/invite-codes/preview') {
+    const code = event.queryStringParameters?.code?.toUpperCase();
+    if (!code) return err(400, 'code required');
+    const { data, error } = await admin
+      .from('invite_codes')
+      .select('coliving_id, expires_at, colivings(name)')
+      .eq('code', code)
+      .gt('expires_at', new Date().toISOString())
+      .single();
+    if (error || !data) return err(404, 'Invalid or expired code');
+    return ok({ colivingId: data.coliving_id, colivingName: data.colivings.name, expiresAt: data.expires_at });
+  }
+
+  // POST /invite-codes/join — join via code
+  if (method === 'POST' && path === '/invite-codes/join') {
+    const { code } = body;
+    if (!code) return err(400, 'code required');
+    const { data: inv, error } = await admin
+      .from('invite_codes')
+      .select('coliving_id, expires_at, colivings(name)')
+      .eq('code', code.toUpperCase())
+      .gt('expires_at', new Date().toISOString())
+      .single();
+    if (error || !inv) return err(404, 'Invalid or expired code');
+    const { error: me } = await admin.from('coliving_members').upsert(
+      { coliving_id: inv.coliving_id, user_id: user.id, role: 'member' },
+      { onConflict: 'coliving_id,user_id' }
+    );
+    if (me) return err(500, me.message);
+    await admin.from('invite_codes').delete().eq('code', code.toUpperCase());
+    await syncMemberToPeople(user.id, inv.coliving_id, admin);
+    return ok({ colivingId: inv.coliving_id, colivingName: inv.colivings.name, role: 'member' });
+  }
+
   // ── COLIVING REQUIRED ─────────────────────────────────────────────────────
-  const membership = await getUserMembership(user.id, admin);
-  if (!membership) return err(403, 'Not a member of any coliving');
-  const colivingId = membership.coliving_id;
+  const colivingId = event.headers['x-coliving-id'];
+  if (!colivingId) return err(400, 'X-Coliving-Id header required');
+  const membership = await getUserMembership(user.id, colivingId, admin);
+  if (!membership) return err(403, 'Not a member of this coliving');
   const role = membership.role;
 
   // PUT /colivings — update name / telegram config
@@ -263,14 +397,16 @@ export const handler = async (event) => {
     const isSelf = target.user_id === user.id;
     if (!isSelf && role !== 'owner') return err(403, 'Only owners can remove other members');
     if (isSelf && role === 'owner') return err(400, 'Owners cannot leave. Transfer ownership or delete the coliving first.');
+    await removeMemberPerson(target.user_id, colivingId, admin);
     const { error } = await admin.from('coliving_members').delete().eq('id', memberId);
     if (error) return err(500, error.message);
     return ok({ ok: true });
   }
 
-  // POST /me/leave
+  // POST /me/leave — colivingId from body
   if (method === 'POST' && path === '/me/leave') {
-    if (role === 'owner') return err(400, 'Owners cannot leave. Transfer ownership or delete the coliving first.');
+    if (role === 'owner') return err(400, 'Owners cannot leave. Delete the coliving first.');
+    await removeMemberPerson(user.id, colivingId, admin);
     const { error } = await admin
       .from('coliving_members').delete().eq('coliving_id', colivingId).eq('user_id', user.id);
     if (error) return err(500, error.message);

@@ -7,6 +7,8 @@ import {
 import {
   fetchMe, checkPendingInvite, fetchMembers,
   createColiving, updateColiving, sendInvite, acceptInvite, leaveColiving, removeMember,
+  generateInviteCode, previewInviteCode, joinByCode, updateProfile,
+  setActiveColiving,
   loadAllData,
   apiAddPerson, apiRemovePerson,
   apiTrash, apiCleaning,
@@ -22,6 +24,9 @@ import { renderVitalnya } from './tabs/vitalnya.js';
 window.app = {
   // Auth
   setAuthMode, handleAuthSubmit, sendPasswordReset, submitNewPassword, signOut,
+  // Dashboard
+  showCreateFlat, showJoinFlat, hideJoinFlat, setJoinTab, submitJoinByCode, goToDashboard,
+  editDisplayName, saveDisplayName, cancelEditDisplayName,
   togglePasswordVisibility(inputId, eyeId) {
     const input = document.getElementById(inputId);
     const eye   = document.getElementById(eyeId);
@@ -36,10 +41,9 @@ window.app = {
   // Onboarding
   submitCreateColiving, submitAcceptInvite, goToCreateColiving,
   // Settings
-  openSettings, closeSettings, saveColivingSettings, submitInviteMember, kickMember, submitLeaveColiving,
+  openSettings, closeSettings, saveColivingSettings, generateCode, submitInviteMember, kickMember, submitLeaveColiving,
   // App
   switchTab,
-  addPerson, removePerson,
   markTrashDone, unmarkTrashDone, addToTrashQueue, removeFromTrashQueue, insertIntoTrashQueue, toggleInsertMenu,
   createCleaningGroup, removeCleaningGroup, saveCleaningSettings,
   changeMonth, showPostponeModal, hidePostponeModal, confirmPostpone, cancelPostponement,
@@ -50,7 +54,7 @@ window.app = {
 // ── Screen management ──────────────────────────────────────────────────────────
 
 function _showOnly(id) {
-  ['loadingScreen', 'authScreen', 'onboardingScreen', 'appScreen'].forEach(s => {
+  ['loadingScreen', 'authScreen', 'dashboardScreen', 'onboardingScreen', 'appScreen'].forEach(s => {
     document.getElementById(s).classList.toggle('hidden', s !== id);
   });
 }
@@ -76,9 +80,171 @@ function showOnboarding(mode, inviteData = null) {
 }
 
 async function showAppScreen() {
+  setActiveColiving(state.colivingId);
   _showOnly('appScreen');
   document.getElementById('appColivingName').textContent = state.colivingName;
   await refreshData();
+}
+
+function _initials(name, email) {
+  if (name) {
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase();
+  }
+  return (email?.[0] || '?').toUpperCase();
+}
+
+async function showDashboard() {
+  _showOnly('dashboardScreen');
+  document.getElementById('dashboardEmail').textContent = state.userEmail;
+  document.getElementById('dashboardAvatar').textContent = _initials(state.displayName, state.userEmail);
+  document.getElementById('dashboardDisplayName').textContent = state.displayName || 'Add your name';
+  document.getElementById('dashboardDisplayName').className = state.displayName
+    ? 'text-lg font-semibold truncate'
+    : 'text-lg font-semibold truncate opacity-50 italic';
+  cancelEditDisplayName();
+  _renderDashboardMemberships();
+}
+
+function editDisplayName() {
+  document.getElementById('dashboardNameView').classList.add('hidden');
+  document.getElementById('dashboardNameEdit').classList.remove('hidden');
+  const input = document.getElementById('displayNameInput');
+  input.value = state.displayName;
+  input.focus();
+}
+
+function cancelEditDisplayName() {
+  document.getElementById('dashboardNameView').classList.remove('hidden');
+  document.getElementById('dashboardNameEdit').classList.add('hidden');
+}
+
+async function saveDisplayName() {
+  const input = document.getElementById('displayNameInput');
+  const name = input.value.trim();
+  try {
+    await updateProfile(name);
+    state.displayName = name;
+    document.getElementById('dashboardAvatar').textContent = _initials(name, state.userEmail);
+    document.getElementById('dashboardDisplayName').textContent = name || 'Add your name';
+    document.getElementById('dashboardDisplayName').className = name
+      ? 'text-lg font-semibold truncate'
+      : 'text-lg font-semibold truncate opacity-50 italic';
+    cancelEditDisplayName();
+  } catch (e) {
+    alert('Could not save name: ' + e.message);
+  }
+}
+
+function _renderDashboardMemberships() {
+  const container = document.getElementById('dashboardMemberships');
+  if (!state.memberships.length) {
+    container.innerHTML = `
+      <div class="text-center py-8 text-gray-400">
+        <svg class="w-10 h-10 mx-auto mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+        </svg>
+        <p class="text-sm">No flats yet</p>
+      </div>`;
+    return;
+  }
+  container.innerHTML = state.memberships.map(m => `
+    <div class="group flex items-center gap-3 p-3.5 rounded-xl border border-gray-100 hover:border-indigo-100 hover:bg-indigo-50 transition-colors cursor-pointer"
+         onclick="window.app.openColiving('${m.colivingId}')">
+      <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+        ${m.colivingName.slice(0, 2).toUpperCase()}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-gray-800 truncate">${m.colivingName}</p>
+        <p class="text-xs text-gray-400 capitalize">${m.role}</p>
+      </div>
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        ${m.role !== 'owner' ? `
+        <button onclick="event.stopPropagation(); window.app.confirmLeave('${m.colivingId}', '${m.colivingName}')"
+                class="px-2.5 py-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+          Leave
+        </button>` : ''}
+        <svg class="w-4 h-4 text-gray-300 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </div>
+    </div>`).join('');
+}
+
+window.app.openColiving = async function(colivingId) {
+  const m = state.memberships.find(m => String(m.colivingId) === String(colivingId));
+  if (!m) return;
+  state.colivingId = m.colivingId;
+  state.colivingName = m.colivingName;
+  state.isOwner = m.role === 'owner';
+  state.linkedPersonId = m.linkedPersonId;
+  await showAppScreen();
+};
+
+window.app.confirmLeave = async function(colivingId, colivingName) {
+  if (!confirm(`Leave "${colivingName}"? You will lose access to all shared data.`)) return;
+  try {
+    await leaveColiving(colivingId);
+    state.memberships = state.memberships.filter(m => String(m.colivingId) !== String(colivingId));
+    _renderDashboardMemberships();
+  } catch (e) { alert('Error: ' + e.message); }
+};
+
+function goToDashboard() {
+  setActiveColiving(null);
+  state.colivingId = null;
+  state.colivingName = '';
+  state.isOwner = false;
+  state.linkedPersonId = null;
+  showDashboard();
+}
+
+function showCreateFlat() {
+  showOnboarding('create');
+}
+
+function showJoinFlat() {
+  document.getElementById('joinFlatModal').classList.remove('hidden');
+  document.getElementById('joinCodeInput').value = '';
+  document.getElementById('joinCodeMsg').classList.add('hidden');
+  setJoinTab('code');
+}
+
+function hideJoinFlat() {
+  document.getElementById('joinFlatModal').classList.add('hidden');
+}
+
+function setJoinTab(tab) {
+  document.getElementById('joinPanelCode').classList.toggle('hidden', tab !== 'code');
+  document.getElementById('joinPanelEmail').classList.toggle('hidden', tab !== 'email');
+  document.getElementById('joinTabCode').classList.toggle('auth-tab-active', tab === 'code');
+  document.getElementById('joinTabCode').classList.toggle('text-gray-500', tab !== 'code');
+  document.getElementById('joinTabEmail').classList.toggle('auth-tab-active', tab === 'email');
+  document.getElementById('joinTabEmail').classList.toggle('text-gray-500', tab !== 'email');
+}
+
+async function submitJoinByCode() {
+  const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+  const msgEl = document.getElementById('joinCodeMsg');
+  msgEl.classList.add('hidden');
+  if (!code) return;
+  try {
+    const result = await joinByCode(code);
+    state.memberships.push({
+      colivingId: result.colivingId,
+      colivingName: result.colivingName,
+      role: result.role,
+      linkedPersonId: null,
+    });
+    hideJoinFlat();
+    _renderDashboardMemberships();
+  } catch (e) {
+    msgEl.textContent = e.message || 'Invalid or expired code.';
+    msgEl.className = 'mb-3 p-3 text-sm rounded-lg bg-red-50 border border-red-200 text-red-700';
+    msgEl.classList.remove('hidden');
+  }
 }
 
 // ── Auth state machine ─────────────────────────────────────────────────────────
@@ -90,30 +256,31 @@ async function handleSignedIn(user) {
   state.userId = user.id;
   state.userEmail = user.email;
 
-  let membership;
-  try {
-    membership = await fetchMe();
-  } catch {
-    membership = null;
+  let me = null;
+  try { me = await fetchMe(); } catch {}
+  state.displayName = me?.displayName || '';
+  state.memberships = me?.memberships || [];
+
+  // Check for pending email invite
+  let invite = null;
+  try { invite = await checkPendingInvite(); } catch {}
+  if (invite) {
+    // Auto-join from email invite link
+    try {
+      const result = await acceptInvite(invite.id);
+      const already = state.memberships.find(m => m.colivingId === result.colivingId);
+      if (!already) {
+        state.memberships.push({
+          colivingId: result.colivingId,
+          colivingName: result.colivingName,
+          role: result.role,
+          linkedPersonId: null,
+        });
+      }
+    } catch {}
   }
 
-  if (!membership) {
-    // Not in any coliving — check for pending invite
-    let invite = null;
-    try { invite = await checkPendingInvite(); } catch {}
-    if (invite) {
-      showOnboarding('accept', invite);
-    } else {
-      showOnboarding('create');
-    }
-    return;
-  }
-
-  state.colivingId = membership.colivingId;
-  state.colivingName = membership.colivingName;
-  state.isOwner = membership.role === 'owner';
-  state.linkedPersonId = membership.linkedPersonId;
-  await showAppScreen();
+  await showDashboard();
 }
 
 export async function signOut() {
@@ -125,6 +292,8 @@ export async function signOut() {
     });
   } catch {}
   clearSession();
+  setActiveColiving(null);
+  state.memberships = [];
   showAuthScreen();
 }
 
@@ -139,11 +308,14 @@ async function submitCreateColiving() {
   btn.textContent = 'Creating…';
   try {
     const result = await createColiving(name);
-    state.colivingId = result.colivingId;
-    state.colivingName = result.colivingName;
-    state.isOwner = true;
-    state.linkedPersonId = null;
-    await showAppScreen();
+    nameInput.value = '';
+    state.memberships.push({
+      colivingId: result.colivingId,
+      colivingName: result.colivingName,
+      role: 'owner',
+      linkedPersonId: null,
+    });
+    await showDashboard();
   } catch (e) {
     alert('Error: ' + e.message);
     btn.disabled = false;
@@ -158,11 +330,16 @@ async function submitAcceptInvite() {
   btn.textContent = 'Joining…';
   try {
     const result = await acceptInvite(invitationId);
-    state.colivingId = result.colivingId;
-    state.colivingName = result.colivingName;
-    state.isOwner = false;
-    state.linkedPersonId = null;
-    await showAppScreen();
+    const already = state.memberships.find(m => m.colivingId === result.colivingId);
+    if (!already) {
+      state.memberships.push({
+        colivingId: result.colivingId,
+        colivingName: result.colivingName,
+        role: result.role,
+        linkedPersonId: null,
+      });
+    }
+    await showDashboard();
   } catch (e) {
     alert('Error: ' + e.message);
     btn.disabled = false;
@@ -182,12 +359,9 @@ async function openSettings() {
   modal.classList.remove('hidden');
   _renderSettings(null); // show loading state
   try {
-    const [members, colivingData] = await Promise.all([
-      fetchMembers(),
-      fetchMe(),
-    ]);
+    const members = await fetchMembers();
     state.members = members;
-    _renderSettings(colivingData);
+    _renderSettings({ colivingName: state.colivingName });
   } catch (e) {
     document.getElementById('settingsBody').innerHTML =
       `<p class="text-red-500 text-sm p-4">Error loading settings: ${e.message}</p>`;
@@ -223,6 +397,19 @@ function _renderSettings(colivingData) {
   const ownerSection = state.isOwner ? `
     <div class="border-t border-gray-200 pt-4">
       <h3 class="font-semibold text-gray-800 mb-3">Invite Member</h3>
+      <div class="mb-3">
+        <p class="text-xs text-gray-500 mb-2">Generate a one-time invite code (expires in 15 minutes):</p>
+        <div class="flex gap-2">
+          <div id="inviteCodeDisplay" class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-center text-gray-500">—</div>
+          <button onclick="window.app.generateCode()"
+                  class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Generate</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 my-3">
+        <div class="flex-1 border-t border-gray-200"></div>
+        <span class="text-xs text-gray-400">or invite by email</span>
+        <div class="flex-1 border-t border-gray-200"></div>
+      </div>
       <div class="flex gap-2">
         <input type="email" id="inviteEmailInput" placeholder="email@example.com"
                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -309,6 +496,19 @@ async function saveColivingSettings() {
   }
 }
 
+async function generateCode() {
+  const displayEl = document.getElementById('inviteCodeDisplay');
+  displayEl.textContent = '…';
+  try {
+    const result = await generateInviteCode(state.colivingId);
+    displayEl.textContent = result.code;
+    displayEl.className = 'flex-1 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-mono text-center text-indigo-700 font-bold tracking-widest';
+  } catch (e) {
+    displayEl.textContent = 'Error';
+    alert('Could not generate code: ' + e.message);
+  }
+}
+
 async function submitInviteMember() {
   const input = document.getElementById('inviteEmailInput');
   const msgEl = document.getElementById('inviteMsg');
@@ -338,13 +538,10 @@ async function kickMember(memberId) {
 async function submitLeaveColiving() {
   if (!confirm('Leave this coliving? You will lose access to all shared data.')) return;
   try {
-    await leaveColiving();
-    state.colivingId = null;
-    state.colivingName = '';
-    state.isOwner = false;
-    state.linkedPersonId = null;
+    await leaveColiving(state.colivingId);
+    state.memberships = state.memberships.filter(m => m.colivingId !== state.colivingId);
     closeSettings();
-    showOnboarding('create');
+    goToDashboard();
   } catch (e) { alert('Error: ' + e.message); }
 }
 

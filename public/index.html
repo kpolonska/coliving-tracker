@@ -124,6 +124,116 @@
     </div>
   </div>
 
+  <!-- ── DASHBOARD SCREEN ────────────────────────────────────────────────────── -->
+  <div id="dashboardScreen" class="hidden min-h-screen flex items-center justify-center py-8 px-4">
+    <div class="max-w-md w-full">
+      <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+
+        <!-- Header -->
+        <div class="bg-gradient-to-br from-indigo-600 to-purple-700 px-6 pt-5 pb-7 text-white">
+          <div class="flex justify-end mb-5">
+            <button onclick="window.app.signOut()"
+                    title="Sign out"
+                    class="p-1.5 rounded-lg bg-white bg-opacity-0 hover:bg-opacity-20 transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+              </svg>
+            </button>
+          </div>
+          <div class="flex items-center gap-4">
+            <div id="dashboardAvatar"
+                 class="w-14 h-14 rounded-full bg-white bg-opacity-20 flex items-center justify-center text-xl font-bold flex-shrink-0 select-none">
+            </div>
+            <div class="flex-1 min-w-0">
+              <!-- Name view -->
+              <div id="dashboardNameView" class="flex items-center gap-2">
+                <p id="dashboardDisplayName" class="text-lg font-semibold truncate"></p>
+                <button onclick="window.app.editDisplayName()" title="Edit name"
+                        class="opacity-60 hover:opacity-100 transition-opacity flex-shrink-0">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                  </svg>
+                </button>
+              </div>
+              <!-- Name edit -->
+              <div id="dashboardNameEdit" class="hidden flex items-center gap-2">
+                <input type="text" id="displayNameInput" maxlength="50" placeholder="Your name"
+                       class="flex-1 min-w-0 bg-white bg-opacity-20 text-white placeholder-indigo-200 border border-white border-opacity-30 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">
+                <button onclick="window.app.saveDisplayName()"
+                        class="px-3 py-1 bg-white text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 flex-shrink-0">Save</button>
+                <button onclick="window.app.cancelEditDisplayName()"
+                        class="px-2 py-1 text-indigo-200 hover:text-white text-sm flex-shrink-0">✕</button>
+              </div>
+              <p id="dashboardEmail" class="text-indigo-200 text-sm truncate mt-0.5"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Body -->
+        <div class="p-5">
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Your flats</p>
+          <div id="dashboardMemberships" class="space-y-2 mb-5"></div>
+          <div class="space-y-2">
+            <button onclick="window.app.showCreateFlat()"
+                    class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Create a flat
+            </button>
+            <button onclick="window.app.showJoinFlat()"
+                    class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-100 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+              </svg>
+              Join with a code
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Join Flat Modal -->
+  <div id="joinFlatModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
+      <div class="flex items-center justify-between p-5 border-b border-gray-200">
+        <h2 class="text-lg font-bold text-gray-900">Join a Flat</h2>
+        <button onclick="window.app.hideJoinFlat()" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="p-5">
+        <div class="flex bg-gray-100 rounded-lg p-1 mb-5">
+          <button id="joinTabCode" onclick="window.app.setJoinTab('code')"
+                  class="flex-1 py-2 text-sm font-medium rounded-md transition-colors auth-tab-active">
+            Enter code
+          </button>
+          <button id="joinTabEmail" onclick="window.app.setJoinTab('email')"
+                  class="flex-1 py-2 text-sm font-medium rounded-md transition-colors text-gray-500">
+            Use email invite
+          </button>
+        </div>
+        <div id="joinPanelCode">
+          <p class="text-sm text-gray-500 mb-3">Enter the invite code shared by your flat admin.</p>
+          <input type="text" id="joinCodeInput" placeholder="e.g. ABCD-1234" maxlength="9"
+                 class="w-full px-4 py-2 border border-gray-300 rounded-lg text-center text-lg font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3">
+          <div id="joinCodeMsg" class="hidden mb-3 p-3 text-sm rounded-lg"></div>
+          <button onclick="window.app.submitJoinByCode()"
+                  class="w-full px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700">
+            Join flat
+          </button>
+        </div>
+        <div id="joinPanelEmail" class="hidden">
+          <p class="text-sm text-gray-500">If you were invited by email, the link in that email will bring you here automatically and add you to the flat. No action needed — just click the link in your inbox.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── ONBOARDING SCREEN ───────────────────────────────────────────────────── -->
   <div id="onboardingScreen" class="hidden min-h-[80vh] flex items-center justify-center">
     <div class="max-w-md w-full">
@@ -175,8 +285,14 @@
       <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
         <div class="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 class="text-2xl md:text-3xl font-bold">Coliving Task Tracker</h1>
-            <p id="appColivingName" class="text-indigo-100 mt-1 text-sm font-medium"></p>
+            <button onclick="window.app.goToDashboard()"
+                    class="flex items-center gap-1 text-indigo-200 hover:text-white text-sm mb-0.5 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+              </svg>
+              All flats
+            </button>
+            <h1 id="appColivingName" class="text-2xl md:text-3xl font-bold"></h1>
           </div>
           <div class="flex items-center gap-2">
             <button onclick="window.app.openSettings()"
