@@ -98,3 +98,11 @@ CREATE TABLE invitations (
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   expires_at     TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days')
 );
+
+CREATE TABLE invite_codes (
+  id          SERIAL PRIMARY KEY,
+  coliving_id INT  NOT NULL REFERENCES colivings(id) ON DELETE CASCADE,
+  code        TEXT NOT NULL UNIQUE,
+  created_by  UUID REFERENCES auth.users(id),
+  expires_at  TIMESTAMPTZ NOT NULL
+);

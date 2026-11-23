@@ -48,6 +48,7 @@ async function _fetch(path, options = {}) {
 export const fetchMe            = () => _fetch('/me');
 export const checkPendingInvite = () => _fetch('/invitations/pending');
 export const fetchMembers       = () => _fetch('/colivings/members');
+export const fetchColiving      = () => _fetch('/colivings');
 
 export const createColiving  = (name) =>
   _fetch('/colivings', { method: 'POST', body: JSON.stringify({ name }) });
@@ -74,16 +75,13 @@ export const removeMember    = (memberId) =>
   _fetch('/colivings/members', { method: 'DELETE', body: JSON.stringify({ memberId }) });
 
 export const generateInviteCode = (colivingId) =>
-  _fetch('/invite-codes', { method: 'POST', body: JSON.stringify({ colivingId }), headers: { 'X-Coliving-Id': '' } });
-
-export const previewInviteCode = (code) =>
-  _fetch(`/invite-codes/preview?code=${encodeURIComponent(code)}`, { headers: { 'X-Coliving-Id': '' } });
+  _fetch('/invite-codes', { method: 'POST', body: JSON.stringify({ colivingId }) });
 
 export const joinByCode = (code) =>
-  _fetch('/invite-codes/join', { method: 'POST', body: JSON.stringify({ code }), headers: { 'X-Coliving-Id': '' } });
+  _fetch('/invite-codes/join', { method: 'POST', body: JSON.stringify({ code }) });
 
 export const updateProfile = (displayName) =>
-  _fetch('/profile', { method: 'PUT', body: JSON.stringify({ displayName }), headers: { 'X-Coliving-Id': '' } });
+  _fetch('/profile', { method: 'PUT', body: JSON.stringify({ displayName }) });
 
 export async function loadAllData() {
   const [people, trashData, cleaningData, birthdays, vitalnya] = await Promise.all([

@@ -56,7 +56,7 @@ async function syncMemberToPeople(userId, colivingId, admin) {
 
   if (membership?.linked_person_id) {
     await admin.from('people').update({ name: displayName }).eq('id', membership.linked_person_id);
-    return;
+    return membership.linked_person_id;
   }
 
   const { data: person } = await admin
@@ -66,7 +66,9 @@ async function syncMemberToPeople(userId, colivingId, admin) {
       .update({ linked_person_id: person.id })
       .eq('user_id', userId)
       .eq('coliving_id', colivingId);
+    return person.id;
   }
+  return null;
 }
 
 async function removeMemberPerson(userId, colivingId, admin) {
@@ -255,8 +257,8 @@ export const handler = async (event) => {
       role: 'owner',
     });
     if (me) return err(500, me.message);
-    await syncMemberToPeople(user.id, coliving.id, admin);
-    return created({ colivingId: coliving.id, colivingName: coliving.name, role: 'owner' });
+    const linkedPersonId = await syncMemberToPeople(user.id, coliving.id, admin);
+    return created({ colivingId: coliving.id, colivingName: coliving.name, role: 'owner', linkedPersonId });
   }
 
   // GET /invitations/pending — look up unaccepted invite by email (no coliving needed)
@@ -293,8 +295,8 @@ export const handler = async (event) => {
     if (me) return err(500, me.message);
     await admin.from('invitations').update({ accepted: true }).eq('id', invitationId);
     const { data: col } = await admin.from('colivings').select('name').eq('id', inv.coliving_id).single();
-    await syncMemberToPeople(user.id, inv.coliving_id, admin);
-    return ok({ colivingId: inv.coliving_id, colivingName: col.name, role: 'member' });
+    const linkedPersonId = await syncMemberToPeople(user.id, inv.coliving_id, admin);
+    return ok({ colivingId: inv.coliving_id, colivingName: col.name, role: 'member', linkedPersonId });
   }
 
   // ── INVITE CODE ROUTES ────────────────────────────────────────────────────
@@ -345,8 +347,8 @@ export const handler = async (event) => {
     );
     if (me) return err(500, me.message);
     await admin.from('invite_codes').delete().eq('code', code.toUpperCase());
-    await syncMemberToPeople(user.id, inv.coliving_id, admin);
-    return ok({ colivingId: inv.coliving_id, colivingName: inv.colivings.name, role: 'member' });
+    const linkedPersonId = await syncMemberToPeople(user.id, inv.coliving_id, admin);
+    return ok({ colivingId: inv.coliving_id, colivingName: inv.colivings.name, role: 'member', linkedPersonId });
   }
 
   // ── COLIVING REQUIRED ─────────────────────────────────────────────────────
@@ -355,6 +357,18 @@ export const handler = async (event) => {
   const membership = await getUserMembership(user.id, colivingId, admin);
   if (!membership) return err(403, 'Not a member of this coliving');
   const role = membership.role;
+
+  // GET /colivings — fetch name + telegram config
+  if (method === 'GET' && path === '/colivings') {
+    const { data, error } = await admin
+      .from('colivings').select('name, telegram_bot_token, telegram_chat_id').eq('id', colivingId).single();
+    if (error) return err(500, error.message);
+    return ok({
+      colivingName: data.name,
+      telegramBotToken: data.telegram_bot_token || '',
+      telegramChatId: data.telegram_chat_id || '',
+    });
+  }
 
   // DELETE /colivings — permanently delete (owner only)
   if (method === 'DELETE' && path === '/colivings') {

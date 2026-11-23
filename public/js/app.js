@@ -5,7 +5,7 @@ import {
   decodeUserFromToken, parseAuthHash,
 } from './auth.js';
 import {
-  fetchMe, checkPendingInvite, fetchMembers,
+  fetchMe, checkPendingInvite, fetchMembers, fetchColiving,
   createColiving, updateColiving, deleteColiving, sendInvite, acceptInvite, leaveColiving, removeMember,
   generateInviteCode, previewInviteCode, joinByCode, updateProfile,
   setActiveColiving,
@@ -259,7 +259,7 @@ async function submitJoinByCode() {
       colivingId: result.colivingId,
       colivingName: result.colivingName,
       role: result.role,
-      linkedPersonId: null,
+      linkedPersonId: result.linkedPersonId,
     });
     hideJoinFlat();
     _renderDashboardMemberships();
@@ -297,7 +297,7 @@ async function handleSignedIn(user) {
           colivingId: result.colivingId,
           colivingName: result.colivingName,
           role: result.role,
-          linkedPersonId: null,
+          linkedPersonId: result.linkedPersonId,
         });
       }
     } catch {}
@@ -341,7 +341,7 @@ async function submitCreateColiving() {
       colivingId: result.colivingId,
       colivingName: result.colivingName,
       role: 'owner',
-      linkedPersonId: null,
+      linkedPersonId: result.linkedPersonId,
     });
     await showDashboard();
   } catch (e) {
@@ -364,7 +364,7 @@ async function submitAcceptInvite() {
         colivingId: result.colivingId,
         colivingName: result.colivingName,
         role: result.role,
-        linkedPersonId: null,
+        linkedPersonId: result.linkedPersonId,
       });
     }
     await showDashboard();
@@ -387,9 +387,9 @@ async function openSettings() {
   modal.classList.remove('hidden');
   _renderSettings(null); // show loading state
   try {
-    const members = await fetchMembers();
+    const [members, colivingData] = await Promise.all([fetchMembers(), fetchColiving()]);
     state.members = members;
-    _renderSettings({ colivingName: state.colivingName });
+    _renderSettings(colivingData);
   } catch (e) {
     document.getElementById('settingsBody').innerHTML =
       `<p class="text-red-500 text-sm p-4">Error loading settings: ${e.message}</p>`;
@@ -451,9 +451,9 @@ function _renderSettings(colivingData) {
       <h3 class="font-semibold text-gray-800 mb-3">Telegram Notifications</h3>
       <p class="text-xs text-gray-500 mb-3">Bot token and chat ID are stored securely and used for daily notifications.</p>
       <div class="space-y-2">
-        <input type="text" id="tgBotToken" placeholder="Bot token (e.g. 123456:ABC…)"
+        <input type="text" id="tgBotToken" value="${colivingData.telegramBotToken || ''}" placeholder="Bot token (e.g. 123456:ABC…)"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-        <input type="text" id="tgChatId" placeholder="Chat ID (e.g. -1001234567890)"
+        <input type="text" id="tgChatId" value="${colivingData.telegramChatId || ''}" placeholder="Chat ID (e.g. -1001234567890)"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
         <button onclick="window.app.saveColivingSettings()"
                 class="w-full px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Save Settings</button>
