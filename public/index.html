@@ -38,6 +38,24 @@
     </div>
   </div>
 
+  <!-- Set Name Modal (first login) -->
+  <div id="setNameModal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+      <h2 class="text-xl font-bold text-gray-900 mb-1">What's your name?</h2>
+      <p class="text-sm text-gray-500 mb-5">Your housemates will see this name in the app.</p>
+      <form onsubmit="event.preventDefault(); window.app.submitSetName();">
+        <input type="text" id="setNameInput" maxlength="50" placeholder="e.g. Kristina"
+               autocomplete="name"
+               class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3">
+        <div id="setNameError" class="hidden mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg"></div>
+        <button type="submit"
+                class="w-full px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-colors">
+          Continue
+        </button>
+      </form>
+    </div>
+  </div>
+
   <!-- Settings Modal -->
   <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 hidden">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">

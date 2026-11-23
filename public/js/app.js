@@ -26,7 +26,7 @@ window.app = {
   setAuthMode, handleAuthSubmit, sendPasswordReset, submitNewPassword, signOut,
   // Dashboard
   showCreateFlat, showJoinFlat, hideJoinFlat, setJoinTab, submitJoinByCode, goToDashboard,
-  editDisplayName, saveDisplayName, cancelEditDisplayName,
+  editDisplayName, saveDisplayName, cancelEditDisplayName, submitSetName,
   togglePasswordVisibility(inputId, eyeId) {
     const input = document.getElementById(inputId);
     const eye   = document.getElementById(eyeId);
@@ -119,6 +119,29 @@ function editDisplayName() {
 function cancelEditDisplayName() {
   document.getElementById('dashboardNameView').classList.remove('hidden');
   document.getElementById('dashboardNameEdit').classList.add('hidden');
+}
+
+async function submitSetName() {
+  const input = document.getElementById('setNameInput');
+  const errorEl = document.getElementById('setNameError');
+  const name = input.value.trim();
+  if (!name) {
+    errorEl.textContent = 'Please enter your name to continue.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  errorEl.classList.add('hidden');
+  try {
+    await updateProfile(name);
+    state.displayName = name;
+    document.getElementById('setNameModal').classList.add('hidden');
+    document.getElementById('dashboardAvatar').textContent = _initials(name, state.userEmail);
+    document.getElementById('dashboardDisplayName').textContent = name;
+    document.getElementById('dashboardDisplayName').className = 'text-lg font-semibold truncate';
+  } catch (e) {
+    errorEl.textContent = 'Could not save name: ' + e.message;
+    errorEl.classList.remove('hidden');
+  }
 }
 
 async function saveDisplayName() {
@@ -281,6 +304,11 @@ async function handleSignedIn(user) {
   }
 
   await showDashboard();
+
+  if (!state.displayName) {
+    document.getElementById('setNameModal').classList.remove('hidden');
+    document.getElementById('setNameInput').focus();
+  }
 }
 
 export async function signOut() {
