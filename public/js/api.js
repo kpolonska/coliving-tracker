@@ -55,6 +55,9 @@ export const createColiving  = (name) =>
 export const updateColiving  = (data) =>
   _fetch('/colivings', { method: 'PUT', body: JSON.stringify(data) });
 
+export const deleteColiving  = () =>
+  _fetch('/colivings', { method: 'DELETE' });
+
 export const sendInvite      = (email) =>
   _fetch('/invitations', { method: 'POST', body: JSON.stringify({ email, redirectTo: window.location.origin }) });
 

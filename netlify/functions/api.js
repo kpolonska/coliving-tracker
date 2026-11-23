@@ -299,13 +299,12 @@ export const handler = async (event) => {
 
   // ── INVITE CODE ROUTES ────────────────────────────────────────────────────
 
-  // POST /invite-codes — generate a code (owner only, colivingId in body)
+  // POST /invite-codes — generate a code (any member)
   if (method === 'POST' && path === '/invite-codes') {
     const { colivingId: cid } = body;
     if (!cid) return err(400, 'colivingId required');
     const membership = await getUserMembership(user.id, cid, admin);
     if (!membership) return err(403, 'Not a member of this coliving');
-    if (membership.role !== 'owner') return err(403, 'Only owners can generate invite codes');
     const code = generateCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const { error } = await admin.from('invite_codes').insert({
@@ -357,9 +356,16 @@ export const handler = async (event) => {
   if (!membership) return err(403, 'Not a member of this coliving');
   const role = membership.role;
 
-  // PUT /colivings — update name / telegram config
+  // DELETE /colivings — permanently delete (owner only)
+  if (method === 'DELETE' && path === '/colivings') {
+    if (role !== 'owner') return err(403, 'Only the owner can delete this coliving');
+    const { error } = await admin.from('colivings').delete().eq('id', colivingId);
+    if (error) return err(500, error.message);
+    return ok({ ok: true });
+  }
+
+  // PUT /colivings — update name / telegram config (any member)
   if (method === 'PUT' && path === '/colivings') {
-    if (role !== 'owner') return err(403, 'Only owners can update coliving settings');
     const updates = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.telegramBotToken !== undefined) updates.telegram_bot_token = body.telegramBotToken || null;
@@ -395,8 +401,7 @@ export const handler = async (event) => {
       .from('coliving_members').select('*').eq('id', memberId).eq('coliving_id', colivingId).single();
     if (!target) return err(404, 'Member not found');
     const isSelf = target.user_id === user.id;
-    if (!isSelf && role !== 'owner') return err(403, 'Only owners can remove other members');
-    if (isSelf && role === 'owner') return err(400, 'Owners cannot leave. Transfer ownership or delete the coliving first.');
+    if (isSelf && role === 'owner') return err(400, 'Owners cannot leave. Delete the coliving first.');
     await removeMemberPerson(target.user_id, colivingId, admin);
     const { error } = await admin.from('coliving_members').delete().eq('id', memberId);
     if (error) return err(500, error.message);
@@ -413,9 +418,8 @@ export const handler = async (event) => {
     return ok({ ok: true });
   }
 
-  // POST /invitations — invite by email (owner only)
+  // POST /invitations — invite by email (any member)
   if (method === 'POST' && path === '/invitations') {
-    if (role !== 'owner') return err(403, 'Only owners can invite members');
     const { email, redirectTo } = body;
     if (!email) return err(400, 'Email is required');
     const normalEmail = email.toLowerCase().trim();

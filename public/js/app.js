@@ -6,7 +6,7 @@ import {
 } from './auth.js';
 import {
   fetchMe, checkPendingInvite, fetchMembers,
-  createColiving, updateColiving, sendInvite, acceptInvite, leaveColiving, removeMember,
+  createColiving, updateColiving, deleteColiving, sendInvite, acceptInvite, leaveColiving, removeMember,
   generateInviteCode, previewInviteCode, joinByCode, updateProfile,
   setActiveColiving,
   loadAllData,
@@ -41,7 +41,7 @@ window.app = {
   // Onboarding
   submitCreateColiving, submitAcceptInvite, goToCreateColiving,
   // Settings
-  openSettings, closeSettings, saveColivingSettings, generateCode, submitInviteMember, kickMember, submitLeaveColiving,
+  openSettings, closeSettings, saveColivingSettings, generateCode, submitInviteMember, kickMember, submitLeaveColiving, submitDeleteColiving,
   // App
   switchTab,
   markTrashDone, unmarkTrashDone, addToTrashQueue, removeFromTrashQueue, insertIntoTrashQueue, toggleInsertMenu,
@@ -410,7 +410,7 @@ function _renderSettings(colivingData) {
   const memberRows = state.members.map(m => {
     const personName = state.people.find(p => p.id === m.linkedPersonId)?.name || '—';
     const isSelf = m.email === state.userEmail;
-    const canKick = state.isOwner && !isSelf;
+    const canKick = !isSelf;
     return `
       <tr class="border-t border-gray-100">
         <td class="py-2 pr-3 text-sm text-gray-800">${m.email}${isSelf ? ' <span class="text-xs text-indigo-500">(you)</span>' : ''}</td>
@@ -422,7 +422,7 @@ function _renderSettings(colivingData) {
       </tr>`;
   }).join('');
 
-  const ownerSection = state.isOwner ? `
+  const actionsSection = `
     <div class="border-t border-gray-200 pt-4">
       <h3 class="font-semibold text-gray-800 mb-3">Invite Member</h3>
       <div class="mb-3">
@@ -459,23 +459,33 @@ function _renderSettings(colivingData) {
                 class="w-full px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Save Settings</button>
       </div>
       <div id="settingsSaveMsg" class="hidden mt-2 text-sm"></div>
-    </div>` : `
+    </div>
+
+    ${!state.isOwner ? `
     <div class="border-t border-gray-200 pt-4">
       <button onclick="window.app.submitLeaveColiving()"
               class="w-full px-4 py-2 bg-red-50 text-red-600 border border-red-200 text-sm rounded-lg hover:bg-red-100">
         Leave this coliving
       </button>
-    </div>`;
+    </div>` : ''}
+
+    ${state.isOwner ? `
+    <div class="border-t border-gray-200 pt-4">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Danger zone</p>
+      <button onclick="window.app.submitDeleteColiving()"
+              class="w-full px-4 py-2 bg-red-50 text-red-600 border border-red-200 text-sm rounded-lg hover:bg-red-100">
+        Delete this coliving
+      </button>
+    </div>` : ''}`;
 
   body.innerHTML = `
     <div class="mb-4">
       <label class="block text-sm font-medium text-gray-700 mb-1">Coliving name</label>
       <div class="flex gap-2">
         <input type="text" id="colivingNameEdit" value="${colivingData.colivingName}"
-               ${state.isOwner ? '' : 'disabled'}
-               class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50">
-        ${state.isOwner ? `<button onclick="window.app.saveColivingSettings()"
-               class="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200">Save</button>` : ''}
+               class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <button onclick="window.app.saveColivingSettings()"
+                class="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200">Save</button>
       </div>
     </div>
 
@@ -491,7 +501,7 @@ function _renderSettings(colivingData) {
       </table>
     </div>
 
-    ${ownerSection}`;
+    ${actionsSection}`;
 }
 
 async function saveColivingSettings() {
@@ -568,6 +578,18 @@ async function submitLeaveColiving() {
   try {
     await leaveColiving(state.colivingId);
     state.memberships = state.memberships.filter(m => m.colivingId !== state.colivingId);
+    closeSettings();
+    goToDashboard();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function submitDeleteColiving() {
+  const name = state.colivingName;
+  if (!confirm(`Delete "${name}"? This permanently removes all members, tasks, and data and cannot be undone.`)) return;
+  if (!confirm(`Are you sure? Type OK to confirm deletion of "${name}".`)) return;
+  try {
+    await deleteColiving();
+    state.memberships = state.memberships.filter(m => String(m.colivingId) !== String(state.colivingId));
     closeSettings();
     goToDashboard();
   } catch (e) { alert('Error: ' + e.message); }
