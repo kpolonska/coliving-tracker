@@ -146,7 +146,7 @@ function _renderDashboardMemberships() {
         <svg class="w-10 h-10 mx-auto mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
         </svg>
-        <p class="text-sm">No flats yet</p>
+        <p class="text-sm">No colivings yet</p>
       </div>`;
     return;
   }
@@ -319,7 +319,7 @@ async function submitCreateColiving() {
   } catch (e) {
     alert('Error: ' + e.message);
     btn.disabled = false;
-    btn.textContent = 'Create Flat';
+    btn.textContent = 'Create Coliving';
   }
 }
 
@@ -343,7 +343,7 @@ async function submitAcceptInvite() {
   } catch (e) {
     alert('Error: ' + e.message);
     btn.disabled = false;
-    btn.textContent = 'Join Flat';
+    btn.textContent = 'Join Coliving';
   }
 }
 
@@ -441,7 +441,7 @@ function _renderSettings(colivingData) {
 
   body.innerHTML = `
     <div class="mb-4">
-      <label class="block text-sm font-medium text-gray-700 mb-1">Flat name</label>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Coliving name</label>
       <div class="flex gap-2">
         <input type="text" id="colivingNameEdit" value="${colivingData.colivingName}"
                ${state.isOwner ? '' : 'disabled'}

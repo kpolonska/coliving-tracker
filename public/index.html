@@ -42,7 +42,7 @@
   <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 hidden">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
       <div class="flex items-center justify-between p-5 border-b border-gray-200">
-        <h2 class="text-lg font-bold text-gray-900">Flat Settings</h2>
+        <h2 class="text-lg font-bold text-gray-900">Coliving Settings</h2>
         <button onclick="window.app.closeSettings()"
                 class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -133,11 +133,11 @@
         <div class="bg-gradient-to-br from-indigo-600 to-purple-700 px-6 pt-5 pb-7 text-white">
           <div class="flex justify-end mb-5">
             <button onclick="window.app.signOut()"
-                    title="Sign out"
-                    class="p-1.5 rounded-lg bg-white bg-opacity-0 hover:bg-opacity-20 transition-colors">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white bg-opacity-20 hover:bg-opacity-30 text-sm font-medium transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
               </svg>
+              Sign out
             </button>
           </div>
           <div class="flex items-center gap-4">
@@ -171,7 +171,7 @@
 
         <!-- Body -->
         <div class="p-5">
-          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Your flats</p>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Your colivings</p>
           <div id="dashboardMemberships" class="space-y-2 mb-5"></div>
           <div class="space-y-2">
             <button onclick="window.app.showCreateFlat()"
@@ -179,7 +179,7 @@
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
               </svg>
-              Create a flat
+              Create a coliving
             </button>
             <button onclick="window.app.showJoinFlat()"
                     class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-100 transition-colors">
@@ -199,7 +199,7 @@
   <div id="joinFlatModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
       <div class="flex items-center justify-between p-5 border-b border-gray-200">
-        <h2 class="text-lg font-bold text-gray-900">Join a Flat</h2>
+        <h2 class="text-lg font-bold text-gray-900">Join a coliving</h2>
         <button onclick="window.app.hideJoinFlat()" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -218,17 +218,17 @@
           </button>
         </div>
         <div id="joinPanelCode">
-          <p class="text-sm text-gray-500 mb-3">Enter the invite code shared by your flat admin.</p>
+          <p class="text-sm text-gray-500 mb-3">Enter the invite code shared by your coliving admin.</p>
           <input type="text" id="joinCodeInput" placeholder="e.g. ABCD-1234" maxlength="9"
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg text-center text-lg font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3">
           <div id="joinCodeMsg" class="hidden mb-3 p-3 text-sm rounded-lg"></div>
           <button onclick="window.app.submitJoinByCode()"
                   class="w-full px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700">
-            Join flat
+            Join coliving
           </button>
         </div>
         <div id="joinPanelEmail" class="hidden">
-          <p class="text-sm text-gray-500">If you were invited by email, the link in that email will bring you here automatically and add you to the flat. No action needed — just click the link in your inbox.</p>
+          <p class="text-sm text-gray-500">If you were invited by email, the link in that email will bring you here automatically and add you to the coliving. No action needed — just click the link in your inbox.</p>
         </div>
       </div>
     </div>
@@ -245,13 +245,13 @@
 
         <!-- Create coliving -->
         <div id="onboardingCreate" class="p-6">
-          <h2 class="text-lg font-semibold text-gray-800 mb-1">Create your flat</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-1">Create your coliving</h2>
           <p class="text-sm text-gray-500 mb-4">Give your coliving a name. You can invite housemates once it's set up.</p>
-          <input type="text" id="colivingNameInput" placeholder="e.g. Sunshine Flat"
+          <input type="text" id="colivingNameInput" placeholder="e.g. Sunshine Coliving"
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4">
           <button id="createColivingBtn" onclick="window.app.submitCreateColiving()"
                   class="w-full px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-colors">
-            Create Flat
+            Create Coliving
           </button>
         </div>
 
@@ -269,7 +269,7 @@
             </button>
             <button id="acceptInviteBtn" onclick="window.app.submitAcceptInvite()"
                     class="flex-1 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 text-sm">
-              Join Flat
+              Join Coliving
             </button>
           </div>
         </div>
@@ -283,20 +283,11 @@
 
       <!-- Header -->
       <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
-        <div class="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <button onclick="window.app.goToDashboard()"
-                    class="flex items-center gap-1 text-indigo-200 hover:text-white text-sm mb-0.5 transition-colors">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-              </svg>
-              All flats
-            </button>
-            <h1 id="appColivingName" class="text-2xl md:text-3xl font-bold"></h1>
-          </div>
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <h1 id="appColivingName" class="text-2xl md:text-3xl font-bold"></h1>
           <div class="flex items-center gap-2">
             <button onclick="window.app.openSettings()"
-                    title="Flat settings"
+                    title="Coliving settings"
                     class="flex items-center gap-2 px-3 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg text-sm font-medium transition-colors">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -304,12 +295,12 @@
               </svg>
               Settings
             </button>
-            <button onclick="window.app.signOut()"
+            <button onclick="window.app.goToDashboard()"
                     class="flex items-center gap-2 px-3 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg text-sm font-medium transition-colors">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
               </svg>
-              Sign Out
+              All colivings
             </button>
           </div>
         </div>
