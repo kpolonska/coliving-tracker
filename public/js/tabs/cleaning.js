@@ -2,7 +2,7 @@ import { state } from '../state.js';
 import { escapeHtml, toLocalDateKey, formatDate, getDisplayInfoForDate } from '../utils.js';
 
 export function renderCleaning() {
-  const { start_date, start_group_id } = state.cleaningSettings;
+  const { start_date, start_group_id, interval_days } = state.cleaningSettings;
   const hasSchedule = start_date && start_group_id;
 
   return `
@@ -31,6 +31,11 @@ export function renderCleaning() {
                 <option value="">Select a group</option>
                 ${state.cleaningGroups.map(g => `<option value="${g.id}" ${g.id === start_group_id ? 'selected' : ''}>${escapeHtml(g.name)}</option>`).join('')}
               </select>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">Days between cleanings:</label>
+              <input type="number" id="cleaningIntervalDays" min="1" max="90" value="${interval_days || 7}"
+                     class="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
             <button onclick="window.app.saveCleaningSettings()" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
               Save Schedule

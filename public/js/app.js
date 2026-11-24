@@ -731,14 +731,17 @@ async function removeCleaningGroup(id) {
 async function saveCleaningSettings() {
   const startDate = document.getElementById('cleaningStartDate').value;
   const startGroupId = parseInt(document.getElementById('cleaningStartGroup').value) || null;
-  const changed = startDate !== state.cleaningSettings.start_date || startGroupId !== state.cleaningSettings.start_group_id;
+  const intervalDays = parseInt(document.getElementById('cleaningIntervalDays').value) || 7;
+  const changed = startDate !== state.cleaningSettings.start_date
+    || startGroupId !== state.cleaningSettings.start_group_id
+    || intervalDays !== (state.cleaningSettings.interval_days || 7);
   let clearPostponements = false;
   if (changed && state.cleaningPostponements.length > 0) {
     if (!confirm('Changing the schedule will clear all existing postponements. Continue?')) return;
     clearPostponements = true;
   }
   try {
-    await apiCleaning('saveSettings', { startDate, startGroupId, clearPostponements });
+    await apiCleaning('saveSettings', { startDate, startGroupId, intervalDays, clearPostponements });
     await refreshData();
   } catch (e) { alert('Error saving settings: ' + e.message); }
 }

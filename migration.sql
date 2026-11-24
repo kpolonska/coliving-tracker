@@ -56,6 +56,7 @@ CREATE TABLE cleaning_settings (
   start_date     DATE,
   start_group_id INT REFERENCES cleaning_groups(id) ON DELETE SET NULL,
   coliving_id    INT REFERENCES colivings(id) ON DELETE CASCADE,
+  interval_days  INT NOT NULL DEFAULT 7,
   CONSTRAINT cleaning_settings_coliving_id_unique UNIQUE (coliving_id)
 );
 

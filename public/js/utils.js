@@ -33,7 +33,7 @@ export function getPersonName(id) {
 // Builds a full date→entry map for the cleaning schedule, cascading postponements
 // so each slot's next date is exactly 4 days after its actual (possibly postponed) date.
 export function buildCleaningScheduleMap() {
-  const { start_date, start_group_id } = state.cleaningSettings;
+  const { start_date, start_group_id, interval_days } = state.cleaningSettings;
   if (!start_date || !start_group_id || state.cleaningGroups.length === 0) {
     return { byActual: {}, byOriginal: {} };
   }
@@ -59,7 +59,7 @@ export function buildCleaningScheduleMap() {
     if (postponement) byOriginal[cursor] = entry;
 
     const [y, m, d] = actual.split('-').map(Number);
-    cursor = toLocalDateKey(new Date(y, m - 1, d + 4));
+    cursor = toLocalDateKey(new Date(y, m - 1, d + (interval_days || 7)));
   }
   return { byActual, byOriginal };
 }

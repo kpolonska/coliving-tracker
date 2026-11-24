@@ -610,7 +610,7 @@ export const handler = async (event) => {
           ...g,
           members: g.cleaning_group_members.map(m => m.person_id),
         })),
-        settings: settingsRes.data || { start_date: null, start_group_id: null },
+        settings: settingsRes.data || { start_date: null, start_group_id: null, interval_days: 7 },
         postponements,
       });
     }
@@ -645,9 +645,9 @@ export const handler = async (event) => {
       }
 
       if (action === 'saveSettings') {
-        const { startDate, startGroupId, clearPostponements } = body;
+        const { startDate, startGroupId, intervalDays, clearPostponements } = body;
         const { error } = await admin.from('cleaning_settings').upsert(
-          { coliving_id: colivingId, start_date: startDate || null, start_group_id: startGroupId },
+          { coliving_id: colivingId, start_date: startDate || null, start_group_id: startGroupId, interval_days: intervalDays || 7 },
           { onConflict: 'coliving_id' }
         );
         if (error) return err(500, error.message);

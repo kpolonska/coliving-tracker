@@ -15,7 +15,7 @@ export const state = {
   trashQueue: [],
   trashCompletion: null,
   cleaningGroups: [],
-  cleaningSettings: { start_date: null, start_group_id: null },
+  cleaningSettings: { start_date: null, start_group_id: null, interval_days: 7 },
   cleaningPostponements: [],
   birthdays: [],
   vitalnyaBookings: [],
