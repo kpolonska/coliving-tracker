@@ -31,7 +31,7 @@ export function getPersonName(id) {
 }
 
 // Builds a full date→entry map for the cleaning schedule, cascading postponements
-// so each slot's next date is exactly 4 days after its actual (possibly postponed) date.
+// so each slot's next date is exactly interval_days after its actual (possibly postponed) date.
 export function buildCleaningScheduleMap() {
   const { start_date, start_group_id, interval_days } = state.cleaningSettings;
   if (!start_date || !start_group_id || state.cleaningGroups.length === 0) {

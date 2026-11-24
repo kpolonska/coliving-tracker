@@ -7,7 +7,7 @@ import {
 import {
   fetchMe, checkPendingInvite, fetchMembers, fetchColiving,
   createColiving, updateColiving, deleteColiving, sendInvite, acceptInvite, leaveColiving, removeMember,
-  generateInviteCode, previewInviteCode, joinByCode, updateProfile,
+  generateInviteCode, joinByCode, updateProfile,
   setActiveColiving,
   loadAllData,
   apiAddPerson, apiRemovePerson,
