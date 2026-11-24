@@ -17,3 +17,9 @@
 
 [functions."notify"]
   schedule = "*/15 * * * *"
+
+# Branch deploys (e.g. dev branch) inherit the build config above.
+# Set branch-specific env vars (Supabase dev credentials) in the
+# Netlify dashboard under Site settings → Environment variables → Scopes → dev branch.
+[context.branch-deploy]
+  command = "echo 'branch deploy'"
